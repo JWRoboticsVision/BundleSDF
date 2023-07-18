@@ -52,7 +52,7 @@ def run_one_video(
     cfg_nerf["continual"] = True
     cfg_nerf["trunc_start"] = 0.01
     cfg_nerf["trunc"] = 0.01
-    cfg_nerf["mesh_resolution"] = 0.005
+    cfg_nerf["mesh_resolution"] = 0.003
     cfg_nerf["down_scale_ratio"] = 1
     cfg_nerf["fs_sdf"] = 0.1
     cfg_nerf["far"] = cfg_bundletrack["depth_processing"]["zfar"]
@@ -64,9 +64,6 @@ def run_one_video(
     cfg_nerf_dir = f"{out_folder}/config_nerf.yml"
     yaml.dump(cfg_nerf, open(cfg_nerf_dir, "w"))
 
-    # if use_segmenter:
-    #     segmenter = XmemRunner()
-
     tracker = BundleSdf(
         cfg_track_dir=cfg_track_dir,
         cfg_nerf_dir=cfg_nerf_dir,
@@ -74,33 +71,11 @@ def run_one_video(
         use_gui=use_gui,
     )
 
-    reader = HOPipReader(video_dir=video_dir)
-    for i in range(0, len(reader.color_files), args.stride):
-        color_file = reader.color_files[i]
-        color = cv2.imread(color_file)
-        # H0, W0 = color.shape[:2]
+    reader = HoPipeReader(video_dir=video_dir)
+    for i in range(0, reader.num_frames, args.stride):
+        color = reader.get_color(i)
         depth = reader.get_depth(i)
-        # H, W = depth.shape[:2]
-        # color = cv2.resize(color, (W, H), interpolation=cv2.INTER_NEAREST)
-        # depth = cv2.resize(depth, (W, H), interpolation=cv2.INTER_NEAREST)
-
-        if i == 0:
-            mask = reader.get_mask(0)
-            # mask = cv2.resize(mask, (W, H), interpolation=cv2.INTER_NEAREST)
-            if use_segmenter:
-                # mask = segmenter.run(
-                #     img=color, msk=mask, is_end=i == len(reader.color_files) - 1
-                # )
-                pass
-        else:
-            if use_segmenter:
-                # mask = segmenter.run(
-                #     img=color, msk=None, is_end=i == len(reader.color_files) - 1
-                # )
-                pass
-            else:
-                mask = reader.get_mask(i)
-                # mask = cv2.resize(mask, (W, H), interpolation=cv2.INTER_NEAREST)
+        mask = reader.get_mask(i)
 
         if cfg_bundletrack["erode_mask"] > 0:
             kernel = np.ones(
@@ -109,7 +84,7 @@ def run_one_video(
             mask = cv2.erode(mask.astype(np.uint8), kernel)
 
         id_str = reader.id_strs[i]
-        pose_in_model = np.eye(4)
+        pose_in_model = np.eye(4, dtype=np.float32)
 
         K = reader.K.copy()
 
@@ -122,7 +97,10 @@ def run_one_video(
             occ_mask=None,
             pose_in_model=pose_in_model,
         )
+
     tracker.on_finish()
+
+    # run global nerf
     run_one_video_global_nerf(out_folder=out_folder)
 
 

@@ -18,6 +18,8 @@ from Utils import *
 
 PROJ_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), "../../"))
 HO3D_ROOT = os.path.join(PROJ_ROOT, "datasets/HO3D_v3")
+DEX_YCB_ROOT = os.path.join(PROJ_ROOT, "datasets/DexYcb")
+HO_PIPE_ROOT = os.path.join(PROJ_ROOT, "datasets/HoPipe")
 
 
 class YcbineoatReader:
@@ -189,158 +191,224 @@ class Ho3dReader:
 
 class DexYcbReader(YcbineoatReader):
     def __init__(self, video_dir):
+        self.calib_dir = os.path.join(DEX_YCB_ROOT, "calibration")
+        self.video_dir = video_dir
+        self.cam_name = os.path.basename(self.video_dir)
+        self.H = 480
+        self.W = 640
+        # read meta data
+        self.read_meta_data()
+        # read K matrix
+        self.read_K_matrix()
+        # read camera pose
+        self.read_cam_pose()
+
+        self.id_strs = [f"{i:06d}" for i in range(self.num_frames)]
+        self.color_files = [
+            os.path.join(self.video_dir, f"color_{self.id_strs[i]}.jpg")
+            for i in range(self.num_frames)
+        ]
+        self.depth_files = [
+            os.path.join(
+                self.video_dir, f"aligned_depth_to_color_{self.id_strs[i]}.png"
+            )
+            for i in range(self.num_frames)
+        ]
+        self.label_files = [
+            os.path.join(self.video_dir, f"labels_{self.id_strs[i]}.npz")
+            for i in range(self.num_frames)
+        ]
+        # self.ob_in_cams = self.read_obj_poses()
+
+    def read_meta_data(self):
+        meta_file = os.path.join(self.video_dir, "../meta.yml")
+        with open(meta_file, "r") as ff:
+            data = yaml.load(ff)
+
+        self.num_frames = data["num_frames"]
+        self.ycb_grasp_ind = data["ycb_grasp_ind"]
+        self.ycb_ids = data["ycb_ids"]
+        self.extr_file = os.path.join(
+            self.calib_dir, f"extrinsics_{data['extrinsics']}/extrinsics.yml"
+        )
+        self.intr_file = os.path.join(
+            self.calib_dir, f"intrinsics/{self.cam_name}_{self.W}x{self.H}.yml"
+        )
+
+    def read_K_matrix(self):
+        with open(self.intr_file, "r") as ff:
+            data = yaml.load(ff)
+
+        self.K = np.array(
+            [
+                [data["color"]["fx"], 0, data["color"]["ppx"]],
+                [0, data["color"]["fy"], data["color"]["ppy"]],
+                [0, 0, 1],
+            ],
+            dtype=np.float32,
+        )
+
+    def read_cam_pose(self):
+        with open(self.extr_file, "r") as ff:
+            data = yaml.load(ff)
+
+        self.master_cam = data["master"]
+        self.cam_in_world = np.array(
+            [
+                [
+                    data["extrinsics"][self.cam_name][0],
+                    data["extrinsics"][self.cam_name][1],
+                    data["extrinsics"][self.cam_name][2],
+                    data["extrinsics"][self.cam_name][3],
+                ],
+                [
+                    data["extrinsics"][self.cam_name][4],
+                    data["extrinsics"][self.cam_name][5],
+                    data["extrinsics"][self.cam_name][6],
+                    data["extrinsics"][self.cam_name][7],
+                ],
+                [
+                    data["extrinsics"][self.cam_name][8],
+                    data["extrinsics"][self.cam_name][9],
+                    data["extrinsics"][self.cam_name][10],
+                    data["extrinsics"][self.cam_name][11],
+                ],
+                [0, 0, 0, 1],
+            ],
+            dtype=np.float32,
+        )
+
+    def read_obj_poses(self):
         from scipy.spatial.transform import Rotation as Rot
 
-        self.calib_dir = os.path.join(
-            PROJ_ROOT, f"datasets/dex_ycb_selected/calibration"
-        )
-        self.video_dir = video_dir
-        self.color_files = sorted(glob.glob(f"{self.video_dir}/color_*.jpg"))
-        self.cam_name = os.path.basename(self.video_dir)
-        with open(
-            os.path.join(self.calib_dir, f"intrinsics/{self.cam_name}_640x480.yml"),
-            "r",
-        ) as ff:
-            calib = yaml.load(ff)
-            self.K = np.eye(3)
-            self.K[0, 0] = calib["color"]["fx"]
-            self.K[1, 1] = calib["color"]["fy"]
-            self.K[0, 2] = calib["color"]["ppx"]
-            self.K[1, 2] = calib["color"]["ppy"]
-        self.id_strs = []
-        for color_file in self.color_files:
-            id_str = (
-                os.path.basename(color_file).replace(".jpg", "").replace(f"color_", "")
-            )
-            self.id_strs.append(id_str)
-        self.H, self.W = cv2.imread(self.color_files[0]).shape[:2]
-
-        with open(os.path.join(self.video_dir, "../meta.yml"), "r") as ff:
-            meta = yaml.load(ff)
-            extrinsics = meta["extrinsics"]
-            ycb_grasp_ind = meta["ycb_grasp_ind"]
-        poses = np.load(os.path.join(self.video_dir, "../pose.npz"))["pose_y"][
-            :, ycb_grasp_ind
-        ]
+        pose_file = os.path.join(self.video_dir, "../pose.npz")
+        poses = np.load(pose_file)["pose_y"][:, self.ycb_grasp_ind]
         ob_in_worlds = []
-        for i in range(len(poses)):
+        for i in range(self.num_frames):
             pp = poses[i]
             ob_in_world = np.eye(4)
             ob_in_world[:3, :3] = Rot.from_quat(pp[:4]).as_matrix()
             ob_in_world[:3, 3] = pp[4:]
             ob_in_worlds.append(ob_in_world)
-        ob_in_worlds = np.array(ob_in_worlds)
-        with open(
-            os.path.join(self.calib_dir, f"extrinsics_{extrinsics}/extrinsics.yml"),
-            "r",
-        ) as ff:
-            tmp = yaml.load(ff)
-            cam_in_world = np.eye(4)
-            cam_in_world[:3] = np.array(tmp["extrinsics"][self.cam_name]).reshape(3, 4)
-        self.ob_in_cams = np.linalg.inv(cam_in_world)[None] @ ob_in_worlds
+        ob_in_worlds = np.array(ob_in_worlds, dtype=np.float32)
+        ob_in_cams = np.linalg.inv(self.cam_in_world)[:3, :] @ ob_in_worlds
+        return ob_in_cams
+
+    def get_color(self, i):
+        color = cv2.imread(self.color_files[i])
+        return color
 
     def get_depth(self, i):
-        depth = (
-            cv2.imread(
-                self.color_files[i]
-                .replace("color_", "aligned_depth_to_color_")
-                .replace(".jpg", ".png"),
-                -1,
-            )
-            / 1e3
+        depth_file = os.path.join(
+            self.video_dir, f"aligned_depth_to_color_{self.id_strs[i]}.png"
         )
-        depth = cv2.resize(depth, (self.W, self.H), interpolation=cv2.INTER_NEAREST)
+        depth = cv2.imread(depth_file, -1).astype(np.float32) / 1000.0
         return depth
 
     def get_mask(self, i):
-        mask_file = f"{self.video_dir}/../target_object_masks/{self.cam_name}/object_{self.id_strs[i]}.png"
-        mask = cv2.imread(mask_file, -1)
-        if len(mask.shape) == 3:
-            mask = (mask > 0).any(axis=-1)
+        seg = np.load(self.label_files[i])["seg"]
+        mask = seg == self.ycb_ids[self.ycb_grasp_ind]
         return mask.astype(np.uint8)
 
-    def get_gt_pose(self, i):
-        return self.ob_in_cams[i].copy()
+    # def get_gt_pose(self, i):
+    #     return self.ob_in_cams[i].copy()
 
 
-class HOPipReader(YcbineoatReader):
+class HoPipeReader(YcbineoatReader):
     def __init__(self, video_dir):
-        self.calib_dir = os.path.join(PROJ_ROOT, f"datasets/hopip_data/calibration")
         self.video_dir = video_dir
-        self.color_files = sorted(glob.glob(f"{self.video_dir}/color_*.jpg"))
+        self.calib_dir = os.path.join(HO_PIPE_ROOT, "calibration")
         self.cam_name = os.path.basename(self.video_dir)
         self.mask_dir = os.path.join(
             self.video_dir, f"../data_processing/xmem/output/{self.cam_name}"
         )
+
+        # load meta data
+        self.read_meta_data()
         # load K matrix
-        with open(
-            os.path.join(self.calib_dir, f"intrinsics/rs_{self.cam_name}_640x480.yml"),
-            "r",
-        ) as ff:
-            calib = yaml.load(ff)
-            self.K = np.eye(3)
-            self.K[0, 0] = calib["color"]["fx"]
-            self.K[1, 1] = calib["color"]["fy"]
-            self.K[0, 2] = calib["color"]["ppx"]
-            self.K[1, 2] = calib["color"]["ppy"]
-        self.id_strs = []
-        for color_file in self.color_files:
-            id_str = (
-                os.path.basename(color_file).replace(".jpg", "").replace(f"color_", "")
-            )
-            self.id_strs.append(id_str)
-        self.H, self.W = cv2.imread(self.color_files[0]).shape[:2]
+        self.read_K_matrix()
+        # load cam pose
+        self.read_cam_pose()
 
-        # with open(os.path.join(self.video_dir, "../meta.yml"), "r") as ff:
-        #     meta = yaml.load(ff)
-        #     extrinsics_file = meta["calibration"]["extrinsics_file"]
+        self.id_strs = [f"{i:06d}" for i in range(self.num_frames)]
 
-        # with open(
-        #     os.path.join(self.calib_dir, f"extrinsics/{extrinsics_file}"), "r"
-        # ) as ff:
-        #     tmp = yaml.load(ff)
-        #     self.cam_in_world = np(
-        #         [
-        #             [
-        #                 tmp[self.cam_name]["rotation"][0],
-        #                 tmp[self.cam_name]["rotation"][1],
-        #                 tmp[self.cam_name]["rotation"][2],
-        #                 tmp[self.cam_name]["translation"][0],
-        #             ],
-        #             [
-        #                 tmp[self.cam_name]["rotation"][3],
-        #                 tmp[self.cam_name]["rotation"][4],
-        #                 tmp[self.cam_name]["rotation"][5],
-        #                 tmp[self.cam_name]["translation"][1],
-        #             ],
-        #             [
-        #                 tmp[self.cam_name]["rotation"][6],
-        #                 tmp[self.cam_name]["rotation"][7],
-        #                 tmp[self.cam_name]["rotation"][8],
-        #                 tmp[self.cam_name]["translation"][2],
-        #             ],
-        #             [0, 0, 0, 1],
-        #         ],
-        #         dtype=np.float32,
-        #     )
+        self.color_files = [
+            os.path.join(self.video_dir, f"color_{i}.jpg") for i in self.id_strs
+        ]
+        self.depth_files = [
+            os.path.join(self.video_dir, f"depth_{i}.png") for i in self.id_strs
+        ]
+        self.mask_files = [
+            os.path.join(self.mask_dir, f"color_{i}.png") for i in self.id_strs
+        ]
+
+    def read_meta_data(self):
+        with open(os.path.join(self.video_dir, "../meta.yml"), "r") as ff:
+            data = yaml.load(ff)
+
+        self.num_frames = data["num_frames"]
+        self.H = data["realsense"]["rs_height"]
+        self.W = data["realsense"]["rs_width"]
+        self.extr_file = os.path.join(
+            self.calib_dir, f"extrinsics/{data['calibration']['extrinsics_file']}"
+        )
+        self.intr_file = os.path.join(self.calib_dir, f"intrinsics/{self.cam_name}.yml")
+
+    def read_K_matrix(self):
+        with open(self.intr_file, "r") as ff:
+            data = yaml.load(ff)
+
+        self.K = np.array(
+            [
+                [data["color"]["fx"], 0, data["color"]["ppx"]],
+                [0, data["color"]["fy"], data["color"]["ppy"]],
+                [0, 0, 1],
+            ],
+            dtype=np.float32,
+        )
+
+    def read_cam_pose(self):
+        with open(self.extr_file, "r") as ff:
+            data = yaml.load(ff)
+
+        self.master_cam = data["rs_master"]
+        extrinsics = data["extrinsics"][self.cam_name]
+        self.cam_in_world = np.array(
+            [
+                [
+                    extrinsics["rotation"][0],
+                    extrinsics["rotation"][1],
+                    extrinsics["rotation"][2],
+                    extrinsics["translation"][0],
+                ],
+                [
+                    extrinsics["rotation"][3],
+                    extrinsics["rotation"][4],
+                    extrinsics["rotation"][5],
+                    extrinsics["translation"][1],
+                ],
+                [
+                    extrinsics["rotation"][6],
+                    extrinsics["rotation"][7],
+                    extrinsics["rotation"][8],
+                    extrinsics["translation"][2],
+                ],
+                [0, 0, 0, 1],
+            ],
+            dtype=np.float32,
+        )
+
+    def get_color(self, i):
+        color = cv2.imread(self.color_files[i])
+        return color
 
     def get_depth(self, i):
-        depth = (
-            cv2.imread(
-                self.color_files[i].replace("color_", "depth_").replace(".jpg", ".png"),
-                -1,
-            )
-            / 1e3
-        )
-        depth = cv2.resize(depth, (self.W, self.H), interpolation=cv2.INTER_NEAREST)
+        depth_file = os.path.join(self.video_dir, f"depth_{self.id_strs[i]}.png")
+        depth = cv2.imread(depth_file, -1).astype(np.float32) / 1000.0
         return depth
 
     def get_mask(self, i):
-        mask_file = f"{self.video_dir}/../data_processing/xmem/output/{self.cam_name}/color_{self.id_strs[i]}.png"
-        mask = cv2.imread(mask_file, -1)
+        mask = cv2.imread(self.mask_files[i], -1)
         if len(mask.shape) == 3:
             mask = (mask > 0).any(axis=-1)
         return mask.astype(np.uint8)
-
-    def get_gt_pose(self, i):
-        return None
