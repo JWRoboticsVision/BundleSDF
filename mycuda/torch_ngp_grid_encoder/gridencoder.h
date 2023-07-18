@@ -8,7 +8,6 @@
  * license agreement from NVIDIA CORPORATION is strictly prohibited.
  */
 
-
 #ifndef _HASH_ENCODE_H
 #define _HASH_ENCODE_H
 

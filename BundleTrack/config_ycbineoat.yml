@@ -4,12 +4,12 @@ model_dir: ""
 debug_dir: /home/bowen/debug/BundleTrack/
 init_pose_dir: ""
 SPDLOG: 2
-port: '5555'
-seg_port: '1111'
+port: "5555"
+seg_port: "1111"
 nerf_port: "9999"
 
 segmentation:
-  ob_scales: [0.3,0.3,0.3]
+  ob_scales: [0.3, 0.3, 0.3]
   tolerance: 0.03
   bg_dist: 0.01
   bg_dir: /home/bowen/debug/2022-09-07-16-49-22/bg.ply
@@ -19,7 +19,7 @@ depth_processing:
   erode:
     radius: 1
     diff: 0.001
-    ratio: 0.8   #if ratio larger than this, depth set to 0
+    ratio: 0.8 #if ratio larger than this, depth set to 0
   bilateral_filter:
     radius: 2
     sigma_D: 2
@@ -27,21 +27,21 @@ depth_processing:
   outlier_removal:
     num: 30
     std_mul: 1
-  edge_normal_thres: 10  #deg between normal and ray
+  edge_normal_thres: 10 #deg between normal and ray
   denoise_cloud: False
 
-visible_angle: 70   # Angle between normal and point to camera origin within XXX is regarded as visible
+visible_angle: 70 # Angle between normal and point to camera origin within XXX is regarded as visible
 
 bundle:
   num_iter_outter: 7
   num_iter_inner: 5
-  window_size: 5  #exclude keyframes, include new frame
+  window_size: 5 #exclude keyframes, include new frame
   max_BA_frames: 10
   subset_selection_method: normal_orientation_nearest
-  depth_association_radius: 5  # 0: findDenseCorr; 1: findDenseCorrNearestNeighbor3D
+  depth_association_radius: 5 # 0: findDenseCorr; 1: findDenseCorrNearestNeighbor3D
   non_neighbor_max_rot: 180
-  non_neighbor_min_visible: 0.1   # ratio of pixel visible
-  icp_pose_rot_thres: 180    # Rotation larger than XX deg is ignored for icp
+  non_neighbor_min_visible: 0.1 # ratio of pixel visible
+  icp_pose_rot_thres: 180 # Rotation larger than XX deg is ignored for icp
   w_rpi: 0
   w_p2p: 1
   w_fm: 1
@@ -51,7 +51,7 @@ bundle:
   min_fm_edges_newframe: 15
   image_downscale: [4]
   feature_edge_dist_thres: 0.01
-  feature_edge_normal_thres: 30   # Normal angle should be within this range
+  feature_edge_normal_thres: 30 # Normal angle should be within this range
 
 keyframe:
   min_interval: 1
@@ -60,9 +60,8 @@ keyframe:
   min_rot: 5
   min_visible: 1
 
-
 sift:
-  scales: [2,4,8]
+  scales: [2, 4, 8]
   max_match_per_query: 5
   nOctaveLayers: 3
   contrastThreshold: 0.01
@@ -87,7 +86,7 @@ ransac:
   inlier_dist: 0.015
   inlier_normal_angle: 45
   desired_succ_rate: 0.99
-  max_trans_neighbor: 0.03   #ransac model estimated pose shouldnt be too far
+  max_trans_neighbor: 0.03 #ransac model estimated pose shouldnt be too far
   max_rot_deg_neighbor: 30
   max_trans_no_neighbor: 0.02
   max_rot_no_neighbor: 10
@@ -104,10 +103,8 @@ sdf_edge:
 
 shape:
   res: 0.005
-  xrange: [-0.2,0.2]
-  yrange: [-0.2,0.2]
-  zrange: [-0.2,0.2]
+  xrange: [-0.2, 0.2]
+  yrange: [-0.2, 0.2]
+  zrange: [-0.2, 0.2]
   max_weight: 100
   truncate_dist: 0.005
-
-

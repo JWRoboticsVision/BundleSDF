@@ -8,7 +8,6 @@
  * license agreement from NVIDIA CORPORATION is strictly prohibited.
  */
 
-
 #ifndef FEATURE_MANAGER_H_
 #define FEATURE_MANAGER_H_
 #include <zmq.hpp>
@@ -37,21 +36,20 @@ class FramePairComparator;
 class Correspondence;
 
 typedef std::pair<std::shared_ptr<Frame>, std::shared_ptr<Frame>> FramePair;
-typedef std::pair<int,int> IndexPair;  // first < second !!
-typedef std::map<FramePair, std::vector<IndexPair>, FramePairComparator, Eigen::aligned_allocator<std::pair<const FramePair, std::vector<IndexPair> > > > MatchMap;
-typedef std::map<FramePair, Eigen::Matrix4f, FramePairComparator, Eigen::aligned_allocator<std::pair<const FramePair, Eigen::Matrix4f > > > PoseMap;
+typedef std::pair<int, int> IndexPair; // first < second !!
+typedef std::map<FramePair, std::vector<IndexPair>, FramePairComparator, Eigen::aligned_allocator<std::pair<const FramePair, std::vector<IndexPair>>>> MatchMap;
+typedef std::map<FramePair, Eigen::Matrix4f, FramePairComparator, Eigen::aligned_allocator<std::pair<const FramePair, Eigen::Matrix4f>>> PoseMap;
 
 PYBIND11_MAKE_OPAQUE(std::map<int, std::shared_ptr<Frame>>);
 PYBIND11_MAKE_OPAQUE(std::map<FramePair, std::vector<Correspondence>>);
 PYBIND11_MAKE_OPAQUE(std::map<FramePair, Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic>>);
-
 
 class MapPoint
 {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
   friend class boost::serialization::access;
-  std::map<std::shared_ptr<Frame>, std::pair<float,float>> _img_pt;
+  std::map<std::shared_ptr<Frame>, std::pair<float, float>> _img_pt;
 
 public:
   MapPoint();
@@ -65,14 +63,13 @@ public:
   };
 };
 
-
 class Correspondence
 {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
   friend class boost::serialization::access;
   // int _feat_idA, _feat_idB;
-  float _uA,_vA,_uB,_vB;   //A: later, B: earlier
+  float _uA, _vA, _uB, _vB; // A: later, B: earlier
   pcl::PointXYZRGBNormal _ptA_cam, _ptB_cam;
   float _confidence = 1;
   bool _isinlier = true;
@@ -82,18 +79,17 @@ public:
   Correspondence();
   Correspondence(float uA, float vA, float uB, float vB, pcl::PointXYZRGBNormal ptA_cam, pcl::PointXYZRGBNormal ptB_cam, bool isinlier);
   ~Correspondence();
-  bool operator == (const Correspondence &other) const;
+  bool operator==(const Correspondence &other) const;
 
   template <class Archive>
   void serialize(Archive &ar, const unsigned int version)
   {
-    ar &_uA & _vA & _uB & _vB;
-    ar &_ptA_cam & _ptB_cam;
+    ar &_uA &_vA &_uB &_vB;
+    ar &_ptA_cam &_ptB_cam;
     ar &_isinlier;
     ar &_ispropogated;
   };
 };
-
 
 class SiftManager
 {
@@ -105,12 +101,11 @@ public:
   std::mt19937 _rng;
   Bundler *_bundler;
 
-  std::map<FramePair, std::vector<Correspondence>> _matches;   //match between frame pair, first(later) --> second(earlier)
+  std::map<FramePair, std::vector<Correspondence>> _matches; // match between frame pair, first(later) --> second(earlier)
   std::map<FramePair, std::vector<Correspondence>> _gt_matches;
-  std::map<FramePair, std::vector<std::shared_ptr<MapPoint>> > _covisible_mappoints;  //Undirected
-  std::map<FramePair, Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic>> _raw_matches;  // Not yet filtered ransac. Useful if _matches are deleted after nerf, so we dont need to query the network again for the raw matches.
+  std::map<FramePair, std::vector<std::shared_ptr<MapPoint>>> _covisible_mappoints;          // Undirected
+  std::map<FramePair, Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic>> _raw_matches; // Not yet filtered ransac. Useful if _matches are deleted after nerf, so we dont need to query the network again for the raw matches.
   std::vector<std::shared_ptr<MapPoint>> _map_points_global;
-
 
 public:
   SiftManager(){};
@@ -128,7 +123,7 @@ public:
   void findCorresByMapPoints(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB);
   std::vector<std::shared_ptr<MapPoint>> getCovisibleMapPoints(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB);
   virtual void findCorresbyNN(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB);
-  void pruneMatches(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB, const std::vector< std::vector<cv::DMatch> > &knn_matchesAB, std::vector<cv::DMatch> &matches_AB);
+  void pruneMatches(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB, const std::vector<std::vector<cv::DMatch>> &knn_matchesAB, std::vector<cv::DMatch> &matches_AB);
   void collectMutualMatches(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB, const std::vector<cv::DMatch> &matches_AB, const std::vector<cv::DMatch> &matches_BA);
   virtual void findCorresbyNNMultiPair(std::vector<FramePair> &pairs);
   void vizPositiveMatches(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB);
@@ -142,11 +137,10 @@ public:
   void runRansacBetween(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB);
   void runRansacMultiPairGPU(const std::vector<std::pair<std::shared_ptr<Frame>, std::shared_ptr<Frame>>> &pairs);
   void runMagsacBetween(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB);
-  void debugSampledMatch(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB, const std::vector<int> &chosen_match_ids, const Eigen::Matrix4f &offset, const std::vector<Correspondence> &inliers, bool debugSampledMatch=false);
+  void debugSampledMatch(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB, const std::vector<int> &chosen_match_ids, const Eigen::Matrix4f &offset, const std::vector<Correspondence> &inliers, bool debugSampledMatch = false);
   void debugMapPoints();
   void forgetFrame(std::shared_ptr<Frame> frame);
 };
-
 
 class Lfnet : public SiftManager
 {
@@ -159,11 +153,9 @@ public:
   Lfnet(){};
   Lfnet(std::shared_ptr<YAML::Node> yml1, Bundler *bundler);
   ~Lfnet();
-  void detectFeature(std::shared_ptr<Frame> frame, float rot_deg=0);
+  void detectFeature(std::shared_ptr<Frame> frame, float rot_deg = 0);
   void warpAndDetectFeature(std::shared_ptr<Frame> frame, const Eigen::Matrix4f &cur_in_init);
 };
-
-
 
 class DeepOpticalFlow : public Lfnet
 {
@@ -174,17 +166,15 @@ public:
   DeepOpticalFlow();
   DeepOpticalFlow(std::shared_ptr<YAML::Node> yml1, Bundler *bundler);
   ~DeepOpticalFlow();
-  void detectFeature(std::shared_ptr<Frame> frame, const float rot_deg=0);
+  void detectFeature(std::shared_ptr<Frame> frame, const float rot_deg = 0);
   void findCorresbyNN(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB) override;
   void exchangeZmqMsg(const cv::Mat &img1, const cv::Mat &img2, const std::vector<int> &sizes, Eigen::MatrixXf &corres_array);
   void exchangeZmqMsg(const std::vector<cv::Mat> &imgs, const std::vector<int> &sizes, std::vector<Eigen::MatrixXf> &corres_array);
 };
 
-
-
 class GluNet : public DeepOpticalFlow
 {
-  public:
+public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
   GluNet();
@@ -197,8 +187,6 @@ class GluNet : public DeepOpticalFlow
   std::tuple<std::vector<cv::Mat>, std::vector<Eigen::Matrix3f>, std::vector<FramePair>> getProcessedImagePairs(const std::vector<FramePair> &pairs);
 };
 
-
-
 class SceneFlow : public DeepOpticalFlow
 {
 public:
@@ -209,6 +197,5 @@ public:
   ~SceneFlow();
   void findCorresbyNN(std::shared_ptr<Frame> frameA, std::shared_ptr<Frame> frameB) override;
 };
-
 
 #endif

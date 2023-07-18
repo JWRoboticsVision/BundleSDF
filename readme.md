@@ -42,13 +42,12 @@ year          = {2023},
 # Docker/Environment setup
 - Build the docker image (this only needs to do once and can take some time).
 ```
-cd docker
-docker build --network host -t nvcr.io/nvidian/bundlesdf .
+bash ./docker/build_container.sh
 ```
 
 - Start a docker container the first time
 ```
-cd docker && bash run_container.sh
+bash ./docker/run_container.sh
 
 # Inside docker container, compile the packages which are machine dependent
 bash build.sh
@@ -67,16 +66,36 @@ root
 Due to license issues, we are not able to include [XMem](https://github.com/hkchengrex/XMem) in this codebase for running segmentation online. If you are interested in doing so, please download the code separately and add a wrapper in `segmentation_utils.py`.
 
 - Run your RGBD video (specify the video_dir and your desired output path). There are 3 steps.
-```
-# 1) Run joint tracking and reconstruction
-python run_custom.py --mode run_video --video_dir /home/bowen/debug/2022-11-18-15-10-24_milk --out_folder /home/bowen/debug/bundlesdf_2022-11-18-15-10-24_milk --use_segmenter 1 --use_gui 1 --debug_level 2
 
-# 2) (Optinal) Run global refinement post-processing to refine the mesh
-python run_custom.py --mode global_refine --video_dir /home/bowen/debug/2022-11-18-15-10-24_milk --out_folder /home/bowen/debug/bundlesdf_2022-11-18-15-10-24_milk   # Change the path to your video_directory
+  1. Run joint tracking and reconstruction
 
-# 3) Get the auto-cleaned mesh
-python run_custom.py --mode get_mesh --video_dir /home/bowen/debug/2022-11-18-15-10-24_milk --out_folder /home/bowen/debug/bundlesdf_2022-11-18-15-10-24_milk
-```
+     ```sh
+     python run_custom.py \
+      --mode run_video \
+      --video_dir ./test/demo/2022-11-18-15-10-24_milk \
+      --out_folder ./test/demo/bundlesdf_2022-11-18-15-10-24_milk \
+      --use_segmenter 1 \
+      --use_gui 1 \
+      --debug_level 2
+     ```
+
+  2. (Optinal) Run global refinement post-processing to refine the mesh
+
+     ```sh
+     python run_custom.py \
+      --mode global_refine \
+      --video_dir ./test/demo/2022-11-18-15-10-24_milk \
+      --out_folder ./test/demo/bundlesdf_2022-11-18-15-10-24_milk
+     ```
+
+  3. Get the auto-cleaned mesh
+
+     ```sh
+     python run_custom.py \
+       --mode get_mesh \
+       --video_dir ./test/demo/2022-11-18-15-10-24_milk \
+       --out_folder ./test/demo/bundlesdf_2022-11-18-15-10-24_milk
+     ```
 
 - Finally the results will be dumped in the `out_folder`, including the tracked poses stored in `ob_in_cam/` and reconstructed mesh with texture `textured_mesh.obj`.
 
@@ -84,9 +103,14 @@ python run_custom.py --mode get_mesh --video_dir /home/bowen/debug/2022-11-18-15
 
 
 # Run on HO3D dataset
+
+- Run BundleSDF to get the pose and reconstruction results
+
+```sh
+python run_ho3d.py \
+  --video_dirs ./datasets/HO3D_v3/evaluation/SM1 \
+  --out_dir ./outputs/ho3d
 ```
-# Run BundleSDF to get the pose and reconstruction results
-python run_ho3d.py --video_dirs /mnt/9a72c439-d0a7-45e8-8d20-d7a235d02763/DATASET/HO3D_v3/evaluation/SM1 --out_dir /home/bowen/debug/ho3d_ours
 
 # Benchmark the output results
 python benchmark_ho3d.py --video_dirs /mnt/9a72c439-d0a7-45e8-8d20-d7a235d02763/DATASET/HO3D_v3/evaluation/SM1 --out_dir /home/bowen/debug/ho3d_ours

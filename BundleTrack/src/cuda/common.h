@@ -32,7 +32,6 @@
 #include <cuda.h>
 #include <bits/stdc++.h>
 
-
 #define MAX_MATCHES_PER_IMAGE_PAIR_RAW 1024
 #define MAX_MATCHES_PER_IMAGE_PAIR_FILTERED 1024
 #define MINF __int_as_float(0xff800000)
@@ -41,40 +40,51 @@
 #define THREADS_PER_BLOCK 512
 #define WARP_SIZE 32
 
-
-#if defined (LINUX)
+#if defined(LINUX)
 #define __FUNCTION__ __func__
 #ifndef __LINE__
 #define __LINE__
 #endif
 #endif
 
-
-inline void __cudaSafeCall( cudaError err, const char *file, const int line )
+inline void __cudaSafeCall(cudaError err, const char *file, const int line)
 {
-  if(err!=cudaSuccess) {
-    printf("%s(%d) : cudaSafeCall() Runtime API error %d: %s.\n", file, line, (int)err, cudaGetErrorString( err ));
+  if (err != cudaSuccess)
+  {
+    printf("%s(%d) : cudaSafeCall() Runtime API error %d: %s.\n", file, line, (int)err, cudaGetErrorString(err));
     exit(-1);
   }
 };
 
-
-inline void __cutilGetLastError( const char *errorMessage, const char *file, const int line )
+inline void __cutilGetLastError(const char *errorMessage, const char *file, const int line)
 {
   cudaError_t err = cudaGetLastError();
-  if(err!=cudaSuccess) {
-    printf("%s(%d) : cutilCheckMsg() CUTIL CUDA error : %s : (%d) %s.\n", file, line, errorMessage, (int)err, cudaGetErrorString( err ));
+  if (err != cudaSuccess)
+  {
+    printf("%s(%d) : cutilCheckMsg() CUTIL CUDA error : %s : (%d) %s.\n", file, line, errorMessage, (int)err, cudaGetErrorString(err));
     exit(-1);
   }
 };
 
+#define cutilSafeCall(err) __cudaSafeCall(err, __FILE__, __LINE__)
+#define cutilCheckMsg(msg) __cutilGetLastError(msg, __FILE__, __LINE__)
 
-#define cutilSafeCall(err)           __cudaSafeCall      (err, __FILE__, __LINE__)
-#define cutilCheckMsg(msg)           __cutilGetLastError (msg, __FILE__, __LINE__)
-
-#define SAFE_DELETE(p)       { if (p) { delete (p);     (p)=nullptr; } }
-#define SAFE_DELETE_ARRAY(p) { if (p) { delete[] (p);   (p)=nullptr; } }
-
+#define SAFE_DELETE(p) \
+  {                    \
+    if (p)             \
+    {                  \
+      delete (p);      \
+      (p) = nullptr;   \
+    }                  \
+  }
+#define SAFE_DELETE_ARRAY(p) \
+  {                          \
+    if (p)                   \
+    {                        \
+      delete[] (p);          \
+      (p) = nullptr;         \
+    }                        \
+  }
 
 #ifndef UINT
 typedef unsigned int UINT;
@@ -148,10 +158,7 @@ typedef unsigned char uchar;
 typedef signed char schar;
 #endif
 
-
 inline int divCeil(int a, int b)
 {
-  return (a+b-1)/b;
+  return (a + b - 1) / b;
 };
-
-

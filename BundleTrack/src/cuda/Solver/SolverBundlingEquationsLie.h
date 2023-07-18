@@ -1,6 +1,5 @@
 #pragma once
 
-
 #define THREADS_PER_BLOCK_JT_DENSE 128
 #define THREADS_PER_BLOCK_JT 128
 
@@ -18,32 +17,34 @@
 // residual functions only for sparse!
 
 // not squared!
-__inline__ __device__ float evalAbsMaxResidualDevice(unsigned int corrIdx, SolverInput& input, SolverState& state, SolverParameters& parameters)
+__inline__ __device__ float evalAbsMaxResidualDevice(unsigned int corrIdx, SolverInput &input, SolverState &state, SolverParameters &parameters)
 {
 	float3 r = make_float3(0.0f, 0.0f, 0.0f);
 
-	const EntryJ& corr = input.d_correspondences[corrIdx];
+	const EntryJ &corr = input.d_correspondences[corrIdx];
 	// if (!corr.active) return 0;
-	if (corr.isValid()) {
+	if (corr.isValid())
+	{
 		float4x4 TI = poseToMatrix(state.d_xRot[corr.imgIdx_i], state.d_xTrans[corr.imgIdx_i]);
 		float4x4 TJ = poseToMatrix(state.d_xRot[corr.imgIdx_j], state.d_xTrans[corr.imgIdx_j]);
-		r = parameters.weightSparse * fabs((TI*corr.pos_i) - (TJ*corr.pos_j));
+		r = parameters.weightSparse * fabs((TI * corr.pos_i) - (TJ * corr.pos_j));
 
 		return max(r.z, max(r.x, r.y));
 	}
 	return 0.0f;
 }
 
-__inline__ __device__ float evalFDevice(unsigned int corrIdx, SolverInput& input, SolverState& state, SolverParameters& parameters, float weight)
+__inline__ __device__ float evalFDevice(unsigned int corrIdx, SolverInput &input, SolverState &state, SolverParameters &parameters, float weight)
 {
 	float3 r = make_float3(0.0f, 0.0f, 0.0f);
 
-	EntryJ& corr = input.d_correspondences[corrIdx];
-	if (corr.isValid()) {
+	EntryJ &corr = input.d_correspondences[corrIdx];
+	if (corr.isValid())
+	{
 		float4x4 TI = poseToMatrix(state.d_xRot[corr.imgIdx_i], state.d_xTrans[corr.imgIdx_i]);
 		float4x4 TJ = poseToMatrix(state.d_xRot[corr.imgIdx_j], state.d_xTrans[corr.imgIdx_j]);
 
-		r = (TI*corr.pos_i) - (TJ*corr.pos_j);
+		r = (TI * corr.pos_i) - (TJ * corr.pos_j);
 		// float normal_dot = dot(TI.getFloat3x3()*corr.normal_i, TJ.getFloat3x3()*corr.normal_j);
 		// if (length(r)>parameters.sparse_dist_thres || normal_dot<parameters.sparse_normal_thres)
 		// {
@@ -72,8 +73,8 @@ __inline__ __device__ float evalFDevice(unsigned int corrIdx, SolverInput& input
 ////////////////////////////////////////
 
 //@variableIdx: image id
-template<bool useDense>
-__inline__ __device__ void evalMinusJTFDevice(unsigned int variableIdx, SolverInput& input, SolverState& state, SolverParameters& parameters, float3& resRot, float3& resTrans)
+template <bool useDense>
+__inline__ __device__ void evalMinusJTFDevice(unsigned int variableIdx, SolverInput &input, SolverState &state, SolverParameters &parameters, float3 &resRot, float3 &resTrans)
 {
 	float3 rRot = make_float3(0.0f, 0.0f, 0.0f);
 	float3 rTrans = make_float3(0.0f, 0.0f, 0.0f);
@@ -90,7 +91,7 @@ __inline__ __device__ void evalMinusJTFDevice(unsigned int variableIdx, SolverIn
 
 	for (int i = 0; i < N; i++)
 	{
-		int corrIdx = input.d_variablesToCorrespondences[variableIdx*input.maxCorrPerImage + i];
+		int corrIdx = input.d_variablesToCorrespondences[variableIdx * input.maxCorrPerImage + i];
 		EntryJ &corr = input.d_correspondences[corrIdx];
 		if (corr.isValid())
 		{
@@ -108,13 +109,13 @@ __inline__ __device__ void evalMinusJTFDevice(unsigned int variableIdx, SolverIn
 			{
 				worldP = TI * corr.pos_i;
 			}
-			const float3 da = evalLie_dAlpha(worldP); //d(e) * T * p  Transformed point wrt. rotation alpha
+			const float3 da = evalLie_dAlpha(worldP); // d(e) * T * p  Transformed point wrt. rotation alpha
 			const float3 db = evalLie_dBeta(worldP);
 			const float3 dc = evalLie_dGamma(worldP);
 
 			const float3 r = (TI * corr.pos_i) - (TJ * corr.pos_j);
 			float3 rho;
-			const float e = dot(r,r);
+			const float e = dot(r, r);
 			// float normal_dot = dot(TI.getFloat3x3()*corr.normal_i, TJ.getFloat3x3()*corr.normal_j);
 			// if (e>parameters.sparse_dist_thres*parameters.sparse_dist_thres || normal_dot<parameters.sparse_normal_thres)
 			// {
@@ -157,7 +158,7 @@ __inline__ __device__ void evalMinusJTFDevice(unsigned int variableIdx, SolverIn
 			// pTrans += make_float3(1.0f, 1.0f, 1.0f);
 		}
 	}
-	if (N>0)
+	if (N > 0)
 	{
 		resRot = -parameters.weightSparse * rRot;
 		resTrans = -parameters.weightSparse * rTrans;
@@ -167,48 +168,61 @@ __inline__ __device__ void evalMinusJTFDevice(unsigned int variableIdx, SolverIn
 		// pTrans *= parameters.weightSparse/float(N);
 	}
 
-	if (useDense) { // add dense term
+	if (useDense)
+	{ // add dense term
 		uint3 transIndices = make_uint3(variableIdx * 6 + 0, variableIdx * 6 + 1, variableIdx * 6 + 2);
 		uint3 rotIndices = make_uint3(variableIdx * 6 + 3, variableIdx * 6 + 4, variableIdx * 6 + 5);
-		resRot -= make_float3(state.d_denseJtr[rotIndices.x], state.d_denseJtr[rotIndices.y], state.d_denseJtr[rotIndices.z]); //minus since -Jtf, weight already built in
-		resTrans -= make_float3(state.d_denseJtr[transIndices.x], state.d_denseJtr[transIndices.y], state.d_denseJtr[transIndices.z]); //minus since -Jtf, weight already built in
+		resRot -= make_float3(state.d_denseJtr[rotIndices.x], state.d_denseJtr[rotIndices.y], state.d_denseJtr[rotIndices.z]);		   // minus since -Jtf, weight already built in
+		resTrans -= make_float3(state.d_denseJtr[transIndices.x], state.d_denseJtr[transIndices.y], state.d_denseJtr[transIndices.z]); // minus since -Jtf, weight already built in
 		//// preconditioner
-		//pRot += make_float3(
+		// pRot += make_float3(
 		//	state.d_denseJtJ[rotIndices.x * input.numberOfImages * 6 + rotIndices.x],
 		//	state.d_denseJtJ[rotIndices.y * input.numberOfImages * 6 + rotIndices.y],
 		//	state.d_denseJtJ[rotIndices.z * input.numberOfImages * 6 + rotIndices.z]);
-		//pTrans += make_float3(
+		// pTrans += make_float3(
 		//	state.d_denseJtJ[transIndices.x * input.numberOfImages * 6 + transIndices.x],
 		//	state.d_denseJtJ[transIndices.y * input.numberOfImages * 6 + transIndices.y],
 		//	state.d_denseJtJ[transIndices.z * input.numberOfImages * 6 + transIndices.z]);
 	}
 
 	// Preconditioner depends on last solution P(input.d_x)
-	if (pRot.x > FLOAT_EPSILON)   state.d_precondionerRot[variableIdx].x = 1.0f / pRot.x;
-	else					      state.d_precondionerRot[variableIdx].x = 1.0f;
+	if (pRot.x > FLOAT_EPSILON)
+		state.d_precondionerRot[variableIdx].x = 1.0f / pRot.x;
+	else
+		state.d_precondionerRot[variableIdx].x = 1.0f;
 
-	if (pRot.y > FLOAT_EPSILON)   state.d_precondionerRot[variableIdx].y = 1.0f / pRot.y;
-	else					      state.d_precondionerRot[variableIdx].y = 1.0f;
+	if (pRot.y > FLOAT_EPSILON)
+		state.d_precondionerRot[variableIdx].y = 1.0f / pRot.y;
+	else
+		state.d_precondionerRot[variableIdx].y = 1.0f;
 
-	if (pRot.z > FLOAT_EPSILON)   state.d_precondionerRot[variableIdx].z = 1.0f / pRot.z;
-	else						  state.d_precondionerRot[variableIdx].z = 1.0f;
+	if (pRot.z > FLOAT_EPSILON)
+		state.d_precondionerRot[variableIdx].z = 1.0f / pRot.z;
+	else
+		state.d_precondionerRot[variableIdx].z = 1.0f;
 
-	if (pTrans.x > FLOAT_EPSILON) state.d_precondionerTrans[variableIdx].x = 1.0f / pTrans.x;
-	else					      state.d_precondionerTrans[variableIdx].x = 1.0f;
+	if (pTrans.x > FLOAT_EPSILON)
+		state.d_precondionerTrans[variableIdx].x = 1.0f / pTrans.x;
+	else
+		state.d_precondionerTrans[variableIdx].x = 1.0f;
 
-	if (pTrans.y > FLOAT_EPSILON) state.d_precondionerTrans[variableIdx].y = 1.0f / pTrans.y;
-	else					      state.d_precondionerTrans[variableIdx].y = 1.0f;
+	if (pTrans.y > FLOAT_EPSILON)
+		state.d_precondionerTrans[variableIdx].y = 1.0f / pTrans.y;
+	else
+		state.d_precondionerTrans[variableIdx].y = 1.0f;
 
-	if (pTrans.z > FLOAT_EPSILON) state.d_precondionerTrans[variableIdx].z = 1.0f / pTrans.z;
-	else					      state.d_precondionerTrans[variableIdx].z = 1.0f;
+	if (pTrans.z > FLOAT_EPSILON)
+		state.d_precondionerTrans[variableIdx].z = 1.0f / pTrans.z;
+	else
+		state.d_precondionerTrans[variableIdx].z = 1.0f;
 }
 
 ////////////////////////////////////////
 // applyJT : this function is called per variable and evaluates each residual influencing that variable (i.e., each energy term per variable)
 ////////////////////////////////////////
 
-__inline__ __device__ void applyJTDevice(unsigned int variableIdx, SolverInput& input, SolverState& state, const SolverParameters& parameters,
-	float3& outRot, float3& outTrans, unsigned int threadIdx, unsigned int lane)
+__inline__ __device__ void applyJTDevice(unsigned int variableIdx, SolverInput &input, SolverState &state, const SolverParameters &parameters,
+										 float3 &outRot, float3 &outTrans, unsigned int threadIdx, unsigned int lane)
 {
 	// Compute J^T*d_Jp here
 	outRot = make_float3(0.0f, 0.0f, 0.0f);
@@ -218,21 +232,23 @@ __inline__ __device__ void applyJTDevice(unsigned int variableIdx, SolverInput& 
 
 	for (int i = threadIdx; i < N; i += THREADS_PER_BLOCK_JT)
 	{
-		int corrIdx = input.d_variablesToCorrespondences[variableIdx*input.maxCorrPerImage + i];
-		const EntryJ& corr = input.d_correspondences[corrIdx];
+		int corrIdx = input.d_variablesToCorrespondences[variableIdx * input.maxCorrPerImage + i];
+		const EntryJ &corr = input.d_correspondences[corrIdx];
 		// if (corr.isValid() && corr.active) {
-		if (corr.isValid()) {
+		if (corr.isValid())
+		{
 			const float4x4 TI = state.d_xTransforms[corr.imgIdx_i];
 			const float4x4 TJ = state.d_xTransforms[corr.imgIdx_j];
 
 			float3 worldP;
-			float  variableSign = 1;
+			float variableSign = 1;
 			if (variableIdx != corr.imgIdx_i)
 			{
 				variableSign = -1;
 				worldP = TJ * corr.pos_j;
 			}
-			else {
+			else
+			{
 				worldP = TI * corr.pos_i;
 			}
 			const float3 da = evalLie_dAlpha(worldP);
@@ -243,26 +259,31 @@ __inline__ __device__ void applyJTDevice(unsigned int variableIdx, SolverInput& 
 			outTrans += variableSign * state.d_Jp[corrIdx];
 		}
 	}
-	//apply j already applied the weight
+	// apply j already applied the weight
 
-	outRot.x = warpReduce(outRot.x);	 outRot.y = warpReduce(outRot.y);	  outRot.z = warpReduce(outRot.z);
-	outTrans.x = warpReduce(outTrans.x); outTrans.y = warpReduce(outTrans.y); outTrans.z = warpReduce(outTrans.z);
+	outRot.x = warpReduce(outRot.x);
+	outRot.y = warpReduce(outRot.y);
+	outRot.z = warpReduce(outRot.z);
+	outTrans.x = warpReduce(outTrans.x);
+	outTrans.y = warpReduce(outTrans.y);
+	outTrans.z = warpReduce(outTrans.z);
 }
 
-__inline__ __device__ float3 applyJDevice(unsigned int corrIdx, SolverInput& input, SolverState& state, const SolverParameters& parameters)
+__inline__ __device__ float3 applyJDevice(unsigned int corrIdx, SolverInput &input, SolverState &state, const SolverParameters &parameters)
 {
 	// Compute Jp here
 	float3 b = make_float3(0.0f, 0.0f, 0.0f);
-	const EntryJ& corr = input.d_correspondences[corrIdx];
+	const EntryJ &corr = input.d_correspondences[corrIdx];
 
 	// if (corr.isValid() && corr.active) {
-	if (corr.isValid()) {
+	if (corr.isValid())
+	{
 		// const float weight = 1000.0/input.d_n_match_per_pair[corr.imgIdx_i*input.maxNumberOfImages+corr.imgIdx_j];
 		// if (!isfinite(weight))
 		// {
 		// 	printf("weight=%f\n",weight);
 		// }
-		if (corr.imgIdx_i > 0)	// get transform 0
+		if (corr.imgIdx_i > 0) // get transform 0
 		{
 			const float4x4 TI = state.d_xTransforms[corr.imgIdx_i];
 			const float3 worldP = TI * corr.pos_i;
@@ -270,11 +291,11 @@ __inline__ __device__ float3 applyJDevice(unsigned int corrIdx, SolverInput& inp
 			const float3 db = evalLie_dBeta(worldP);
 			const float3 dc = evalLie_dGamma(worldP);
 
-			const float3  pp0 = state.d_pRot[corr.imgIdx_i];
-			b += da*pp0.x + db*pp0.y + dc*pp0.z + state.d_pTrans[corr.imgIdx_i];
+			const float3 pp0 = state.d_pRot[corr.imgIdx_i];
+			b += da * pp0.x + db * pp0.y + dc * pp0.z + state.d_pTrans[corr.imgIdx_i];
 		}
 
-		if (corr.imgIdx_j > 0)	// get transform 1
+		if (corr.imgIdx_j > 0) // get transform 1
 		{
 			const float4x4 TJ = state.d_xTransforms[corr.imgIdx_j];
 			const float3 worldP = TJ * corr.pos_j;
@@ -282,8 +303,8 @@ __inline__ __device__ float3 applyJDevice(unsigned int corrIdx, SolverInput& inp
 			const float3 db = evalLie_dBeta(worldP);
 			const float3 dc = evalLie_dGamma(worldP);
 
-			const float3  pp1 = state.d_pRot[corr.imgIdx_j];
-			b -= da*pp1.x + db*pp1.y + dc*pp1.z + state.d_pTrans[corr.imgIdx_j];
+			const float3 pp1 = state.d_pRot[corr.imgIdx_j];
+			b -= da * pp1.x + db * pp1.y + dc * pp1.z + state.d_pTrans[corr.imgIdx_j];
 		}
 		// b *= parameters.weightSparse*weight;
 		b *= parameters.weightSparse;
@@ -307,70 +328,74 @@ __inline__ __device__ float3 applyJDevice(unsigned int corrIdx, SolverInput& inp
  * @param rho from robust estimator (error, deriv, second-order deriv)
  * @return __inline__
  */
-__inline__ __device__ void computeJacobianBlockRow_i(matNxM<1, 6>& jacBlockRow, const float4x4& transform_i, const float4x4& invTransform_j, const float3& camPosSrc, const float3& normalTgt)
+__inline__ __device__ void computeJacobianBlockRow_i(matNxM<1, 6> &jacBlockRow, const float4x4 &transform_i, const float4x4 &invTransform_j, const float3 &camPosSrc, const float3 &normalTgt)
 {
 	matNxM<3, 6> jac = evalLie_derivI(invTransform_j, transform_i, camPosSrc);
-	for (unsigned int i = 0; i < 6; i++) {
+	for (unsigned int i = 0; i < 6; i++)
+	{
 		jacBlockRow(i) = -dot(make_float3(jac(0, i), jac(1, i), jac(2, i)), normalTgt);
 	}
 }
 
-__inline__ __device__ void computeJacobianBlockRow_j(matNxM<1, 6>& jacBlockRow, const float4x4& invTransform_i,
-	const float4x4& transform_j, const float3& camPosSrc, const float3& normalTgt)
+__inline__ __device__ void computeJacobianBlockRow_j(matNxM<1, 6> &jacBlockRow, const float4x4 &invTransform_i,
+													 const float4x4 &transform_j, const float3 &camPosSrc, const float3 &normalTgt)
 {
 	matNxM<3, 6> jac = evalLie_derivJ(invTransform_i, transform_j, camPosSrc);
-	for (unsigned int i = 0; i < 6; i++) {
+	for (unsigned int i = 0; i < 6; i++)
+	{
 		jacBlockRow(i) = -dot(make_float3(jac(0, i), jac(1, i), jac(2, i)), normalTgt);
 	}
 }
 ////////////////////////////////////////
 // dense color term
 ////////////////////////////////////////
-__inline__ __device__ float computeColorDProjLookup(const float4& dx, const float3& camPosSrcToTgt, const float2& intensityDerivTgt, const float2& colorFocalLength)
+__inline__ __device__ float computeColorDProjLookup(const float4 &dx, const float3 &camPosSrcToTgt, const float2 &intensityDerivTgt, const float2 &colorFocalLength)
 {
-	mat3x1 dcdx; dcdx(0) = dx.x; dcdx(1) = dx.y; dcdx(2) = dx.z;
+	mat3x1 dcdx;
+	dcdx(0) = dx.x;
+	dcdx(1) = dx.y;
+	dcdx(2) = dx.z;
 	mat2x3 dProjectionC = dCameraToScreen(camPosSrcToTgt, colorFocalLength.x, colorFocalLength.y);
 	mat1x2 dColorB(intensityDerivTgt);
 	mat1x1 dadx = dColorB * dProjectionC * dcdx;
 
 	return dadx(0);
 }
-__inline__ __device__ void computeJacobianBlockIntensityRow_i(matNxM<1, 6>& jacBlockRow, const float2& colorFocal, const float4x4& transform_i,
-	const float4x4& invTransform_j, const float3& camPosSrc, const float3& camPosSrcToTgt, const float2& intensityDerivTgt)
+__inline__ __device__ void computeJacobianBlockIntensityRow_i(matNxM<1, 6> &jacBlockRow, const float2 &colorFocal, const float4x4 &transform_i,
+															  const float4x4 &invTransform_j, const float3 &camPosSrc, const float3 &camPosSrcToTgt, const float2 &intensityDerivTgt)
 {
-	matNxM<3, 6> jac = evalLie_derivI(invTransform_j, transform_i, camPosSrc);					//TODO shared compute here with depth and j
+	matNxM<3, 6> jac = evalLie_derivI(invTransform_j, transform_i, camPosSrc); // TODO shared compute here with depth and j
 	mat2x3 dProj = dCameraToScreen(camPosSrcToTgt, colorFocal.x, colorFocal.y);
 	mat1x2 dColorB(intensityDerivTgt);
 	jacBlockRow = dColorB * (dProj * jac);
 }
-__inline__ __device__ void computeJacobianBlockIntensityRow_j(matNxM<1, 6>& jacBlockRow, const float2& colorFocal, const float4x4& invTransform_i,
-	const float4x4& transform_j, const float3& camPosSrc, const float3& camPosSrcToTgt, const float2& intensityDerivTgt)
+__inline__ __device__ void computeJacobianBlockIntensityRow_j(matNxM<1, 6> &jacBlockRow, const float2 &colorFocal, const float4x4 &invTransform_i,
+															  const float4x4 &transform_j, const float3 &camPosSrc, const float3 &camPosSrcToTgt, const float2 &intensityDerivTgt)
 {
-	matNxM<3, 6> jac = evalLie_derivJ(invTransform_i, transform_j, camPosSrc);			//TODO shared compute here with depth and j
+	matNxM<3, 6> jac = evalLie_derivJ(invTransform_i, transform_j, camPosSrc); // TODO shared compute here with depth and j
 	mat2x3 dProj = dCameraToScreen(camPosSrcToTgt, colorFocal.x, colorFocal.y);
 	mat1x2 dColorB(intensityDerivTgt);
 	jacBlockRow = dColorB * (dProj * jac);
 
 	////one transform only!
-	//float gz2 = camPosSrcToTgt.z * camPosSrcToTgt.z;
-	//matNxM<2, 6> j; j.setZero();
-	//j(0, 0) = colorFocal.x / camPosSrcToTgt.z;
-	//j(1, 1) = colorFocal.y / camPosSrcToTgt.z;
-	//j(0, 2) = -colorFocal.x * camPosSrcToTgt.x / gz2;
-	//j(1, 2) = -colorFocal.y * camPosSrcToTgt.y / gz2;
+	// float gz2 = camPosSrcToTgt.z * camPosSrcToTgt.z;
+	// matNxM<2, 6> j; j.setZero();
+	// j(0, 0) = colorFocal.x / camPosSrcToTgt.z;
+	// j(1, 1) = colorFocal.y / camPosSrcToTgt.z;
+	// j(0, 2) = -colorFocal.x * camPosSrcToTgt.x / gz2;
+	// j(1, 2) = -colorFocal.y * camPosSrcToTgt.y / gz2;
 
-	//j(0, 3) = -colorFocal.x * camPosSrcToTgt.x * camPosSrcToTgt.y / gz2;
-	//j(1, 3) = -colorFocal.y * (1.0f + (camPosSrcToTgt.y * camPosSrcToTgt.y / gz2));
-	//j(0, 4) = colorFocal.x * (1.0f + (camPosSrcToTgt.x * camPosSrcToTgt.x / gz2));
-	//j(1, 4) = colorFocal.y * camPosSrcToTgt.x * camPosSrcToTgt.y / gz2;
-	//j(0, 5) = -colorFocal.x * camPosSrcToTgt.y / camPosSrcToTgt.z;
-	//j(1, 5) = colorFocal.y * camPosSrcToTgt.x / camPosSrcToTgt.z;
-	//mat1x2 iDeriv; iDeriv(0) = intensityDerivTgt.x; iDeriv(1) = intensityDerivTgt.y;
+	// j(0, 3) = -colorFocal.x * camPosSrcToTgt.x * camPosSrcToTgt.y / gz2;
+	// j(1, 3) = -colorFocal.y * (1.0f + (camPosSrcToTgt.y * camPosSrcToTgt.y / gz2));
+	// j(0, 4) = colorFocal.x * (1.0f + (camPosSrcToTgt.x * camPosSrcToTgt.x / gz2));
+	// j(1, 4) = colorFocal.y * camPosSrcToTgt.x * camPosSrcToTgt.y / gz2;
+	// j(0, 5) = -colorFocal.x * camPosSrcToTgt.y / camPosSrcToTgt.z;
+	// j(1, 5) = colorFocal.y * camPosSrcToTgt.x / camPosSrcToTgt.z;
+	// mat1x2 iDeriv; iDeriv(0) = intensityDerivTgt.x; iDeriv(1) = intensityDerivTgt.y;
 	////matNxM<1, 6> tmp = iDeriv *  j;
 	////for (unsigned int i = 0; i < 3; i++) {
 	////	jacBlockRow(i) = tmp(i + 3);
 	////	jacBlockRow(i + 3) = tmp(i);
 	////}
-	//jacBlockRow = iDeriv *  j;
+	// jacBlockRow = iDeriv *  j;
 }
-

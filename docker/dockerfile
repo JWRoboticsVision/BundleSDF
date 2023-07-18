@@ -1,102 +1,261 @@
-FROM nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04
+# Use CUDA and cuDNN images from gitlab.com/nvidia/cuda as base image
+FROM nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04
 
-ENV TZ=US/Pacific
+# Avoid warnings by switching to noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
+
+###############################################################################
+# Set the timezone to America/Chicago
+###############################################################################
+
+ENV TZ=America/Chicago
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-RUN apt-get update --fix-missing && \
-    apt-get install -y libgtk2.0-dev && \
-    apt-get install -y wget bzip2 ca-certificates curl git vim tmux g++ gcc build-essential cmake checkinstall gfortran libjpeg8-dev libtiff5-dev pkg-config yasm libavcodec-dev libavformat-dev libswscale-dev libdc1394-22-dev libxine2-dev libv4l-dev qt5-default libgtk2.0-dev libtbb-dev libatlas-base-dev libfaac-dev libmp3lame-dev libtheora-dev libvorbis-dev libxvidcore-dev libopencore-amrnb-dev libopencore-amrwb-dev x264 v4l-utils libprotobuf-dev protobuf-compiler libgoogle-glog-dev libgflags-dev libgphoto2-dev libhdf5-dev doxygen libflann-dev libboost-all-dev proj-data libproj-dev libyaml-cpp-dev cmake-curses-gui
+###############################################################################
+# Install developing tools & dependencies
+###############################################################################
 
+# Install basic dependencies
+RUN apt-get update --fix-missing
+RUN apt-get install -y build-essential gcc g++ cmake make cmake-curses-gui checkinstall binutils ca-certificates apt-transport-https software-properties-common
+RUN apt-get install -y freeglut3 freeglut3-dev libglfw3 libglfw3-dev libglew-dev libfreeimage-dev libglu1-mesa libglu1-mesa-dev libx11-dev libxmu-dev libxi-dev
+RUN apt-get install -y wget curl git vim tmux unzip zlib1g libzmq3-dev
 
-RUN cd / && wget https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz &&\
-    tar xvzf ./eigen-3.4.0.tar.gz &&\
-    cd eigen-3.4.0 &&\
-    mkdir build &&\
-    cd build &&\
-    cmake .. &&\
+# Install OpenCV dependencies
+RUN apt-get install -y \
+    pkg-config \
+    qt5-default \
+    libgtk2.0-dev \
+    libjpeg8-dev \
+    libtiff5-dev \
+    libpng-dev \
+    libavcodec-dev libavformat-dev \
+    libswscale-dev \
+    libdc1394-22-dev \
+    libxine2-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libtbb-dev libatlas-base-dev \
+    libfaac-dev libmp3lame-dev libtheora-dev libvorbis-dev \
+    libblas-dev \
+    liblapack-dev \
+    liblapacke-dev \
+    gfortran yasm \
+    libopencore-amrnb-dev libopencore-amrwb-dev x264 v4l-utils libprotobuf-dev protobuf-compiler libgoogle-glog-dev libgflags-dev libgphoto2-dev libhdf5-dev doxygen
+
+# Install PCL dependencies
+RUN apt-get install -y \
+    libboost-all-dev \
+    libflann-dev \
+    libqhull-dev libgtest-dev libpcap-dev proj-data libproj-dev \
+    libxmu-dev libxi-dev \
+    libopenni-dev libopenni2-dev libopenni-sensor-primesense-dev
+
+###############################################################################
+# Install zsh and oh-my-zsh
+###############################################################################
+# Install zsh
+RUN apt-get install -y zsh
+
+# Set zsh as default shell
+SHELL ["/bin/zsh", "--login", "-c"]
+
+# Install oh-my-zsh
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+
+# Change oh-my-zsh theme
+RUN sed -i 's/robbyrussell/candy/g' ~/.zshrc
+
+# Set up the environment variables for CUDA and cuDNN library
+ENV LD_LIBRARY_PATH /usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+
+###############################################################################
+# Build and install Eigen v3.4.0
+###############################################################################
+
+RUN cd / && wget https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz && tar -xzf eigen-3.4.0.tar.gz && rm eigen-3.4.0.tar.gz
+
+RUN cd /eigen-3.4.0 && mkdir build && cd build && \
+    cmake .. && \
     make install
 
-RUN cd / &&\
-    git clone https://github.com/opencv/opencv &&\
-    cd opencv &&\
-    git checkout 3.4.15 &&\
-    cd / && git clone https://github.com/opencv/opencv_contrib.git &&\
-    cd opencv_contrib &&\
-    git checkout 3.4.15 &&\
-    cd /opencv &&\
-    mkdir build
+RUN cd / && rm -rf eigen-3.4.0
 
+###############################################################################
+# Compile and install yaml-cpp v0.7.0
+###############################################################################
 
-RUN cd /opencv/build &&\
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_CUDA_STUBS=OFF -DBUILD_DOCS=OFF -DWITH_MATLAB=OFF -Dopencv_dnn_BUILD_TORCH_IMPORTE=OFF -DCUDA_FAST_MATH=ON  -DMKL_WITH_OPENMP=ON -DOPENCV_ENABLE_NONFREE=ON -DWITH_OPENMP=ON -DWITH_QT=ON -WITH_OPENEXR=ON -DENABLE_PRECOMPILED_HEADERS=OFF -DBUILD_opencv_cudacodec=OFF -DINSTALL_PYTHON_EXAMPLES=OFF  -DWITH_TIFF=OFF -DWITH_WEBP=OFF -DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib/modules -DCMAKE_CXX_FLAGS=-std=c++11 -DENABLE_CXX11=OFF  -DBUILD_opencv_xfeatures2d=ON -DOPENCV_DNN_OPENCL=OFF -DWITH_CUDA=ON -DWITH_OPENCL=OFF &&\
-    make -j6 &&\
-    make install &&\
-    cd /opencv/build && make install
+RUN cd / && wget https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.tar.gz && tar xzf yaml-cpp-0.7.0.tar.gz && rm yaml-cpp-0.7.0.tar.gz
 
-RUN cd / &&\
-    git clone https://github.com/PointCloudLibrary/pcl
-
-RUN cd /pcl &&\
-    git checkout pcl-1.10.0 &&\
-    mkdir build &&\
-    cd build &&\
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_apps=OFF -DBUILD_GPU=OFF  -DBUILD_CUDA=OFF -DBUILD_examples=OFF -DBUILD_global_tests=OFF -DBUILD_simulation=OFF -DCUDA_BUILD_EMULATION=OFF -DCMAKE_CXX_FLAGS=-std=c++11 -DPCL_ENABLE_SSE=ON -DPCL_SHARED_LIBS=ON &&\
-    make -j6 &&\
+RUN cd /yaml-cpp-yaml-cpp-0.7.0 && \
+    mkdir build && cd build && \
+    cmake .. \
+    -DBUILD_TESTING=OFF \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DINSTALL_GTEST=OFF \
+    -DYAML_CPP_BUILD_TESTS=OFF \
+    -DYAML_BUILD_SHARED_LIBS=ON && \
+    make -j$(nproc) && \
     make install
 
-RUN apt install -y libzmq3-dev freeglut3-dev
+RUN cd / && \
+    rm -rf yaml-cpp-yaml-cpp-0.7.0
 
-RUN cd / && git clone https://github.com/pybind/pybind11 &&\
-    cd pybind11 && git checkout v2.10.0 &&\
-    mkdir build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release -DPYBIND11_INSTALL=ON -DPYBIND11_TEST=OFF &&\
-    make -j6 && make install
+###############################################################################
+# Build and install Pybind11 v2.11.0
+###############################################################################
 
-RUN cd / && git clone https://github.com/jbeder/yaml-cpp &&\
-    cd yaml-cpp && git checkout yaml-cpp-0.7.0 &&\
-    mkdir build && cd build && cmake .. -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release -DINSTALL_GTEST=OFF -DYAML_CPP_BUILD_TESTS=OFF -DYAML_BUILD_SHARED_LIBS=ON &&\
-    make -j6 && make install
+RUN cd / && git clone https://github.com/pybind/pybind11.git && cd pybind11 && git checkout v2.11.0
 
-SHELL ["/bin/bash", "--login", "-c"]
+RUN cd /pybind11 && mkdir build && cd build && \
+    cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DPYBIND11_INSTALL=ON \
+    -DPYBIND11_TEST=OFF && \
+    make -j$(nproc) && \
+    make install
 
-RUN cd / && wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /miniconda.sh && \
-    /bin/bash /miniconda.sh -b -p /opt/conda &&\
-    ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh &&\
-    echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc &&\
-    /bin/bash -c "source ~/.bashrc" && \
-    /opt/conda/bin/conda update -n base -c defaults conda -y &&\
-    /opt/conda/bin/conda config --set ssl_verify no && \
-    /opt/conda/bin/conda config --add channels conda-forge &&\
-    /opt/conda/bin/conda create -n py38 python=3.8
+RUN cd / && rm -rf pybind11
 
+###############################################################################
+# Build and install OpenCV v3.4.16 with CUDA support
+###############################################################################
 
-ENV PATH $PATH:/opt/conda/envs/py38/bin
+RUN cd / && git clone https://github.com/opencv/opencv.git && cd opencv && git checkout 3.4.16
 
+RUN cd / && git clone https://github.com/opencv/opencv_contrib.git && cd opencv_contrib && git checkout 3.4.16
 
-RUN conda init bash &&\
-    echo "conda activate py38" >> ~/.bashrc &&\
-    conda activate py38 &&\
-    pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113 &&\
-    pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable" &&\
-    pip install trimesh opencv-python wandb matplotlib imageio tqdm open3d ruamel.yaml sacred kornia pymongo pyrender jupyterlab ninja &&\
-    conda install -y -c anaconda scipy
+RUN cd /opencv && mkdir build && cd build && \
+    cmake .. -Wno-dev \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_CUDA_STUBS=OFF \
+    -DBUILD_DOCS=OFF \
+    -DWITH_MATLAB=OFF \
+    -Dopencv_dnn_BUILD_TORCH_IMPORTE=OFF \
+    -DCUDA_FAST_MATH=ON \
+    -DMKL_WITH_OPENMP=ON \
+    -DOPENCV_ENABLE_NONFREE=ON \
+    -DWITH_OPENMP=ON \
+    -DWITH_QT=ON \
+    -WITH_OPENEXR=ON \
+    -DENABLE_PRECOMPILED_HEADERS=OFF \
+    -DBUILD_opencv_cudacodec=OFF \
+    -DINSTALL_PYTHON_EXAMPLES=OFF \
+    -DWITH_TIFF=OFF \
+    -DWITH_WEBP=OFF \
+    -DOPENCV_EXTRA_MODULES_PATH=/opencv_contrib/modules \
+    -DCMAKE_CXX_FLAGS=-std=c++14 \
+    # -DCMAKE_CXX_FLAGS=-std=c++11 -DENABLE_CXX11=OFF \
+    -DBUILD_opencv_xfeatures2d=ON \
+    -DOPENCV_DNN_OPENCL=OFF \
+    -DWITH_CUDA=ON \
+    -DCUDA_ARCH_BIN="6.1 7.0 7.5 8.0 8.6" \
+    -DWITH_OPENCL=OFF \
+    -DBUILD_opencv_python2=OFF \
+    -DBUILD_opencv_python3=ON && \
+    make -j$(nproc) && \
+    make install
 
+RUN cd / && \
+    rm -rf opencv && \
+    rm -rf opencv_contrib
 
-RUN cd / && git clone --recursive https://github.com/NVIDIAGameWorks/kaolin
+###############################################################################
+# Build and install PCL v1.10.1 with CUDA support
+###############################################################################
 
+RUN cd / && git clone https://github.com/PointCloudLibrary/pcl.git && \
+    cd pcl && \
+    git checkout pcl-1.10.1
 
+RUN cd /pcl && mkdir build && cd build && \
+    cmake .. -Wno-dev \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_apps=OFF \
+    -DBUILD_GPU=OFF \
+    -DBUILD_CUDA=OFF \
+    -DBUILD_examples=OFF \
+    -DBUILD_global_tests=OFF \
+    -DBUILD_simulation=OFF \
+    -DCUDA_BUILD_EMULATION=OFF \
+    -DCMAKE_CXX_FLAGS=-std=c++14 \
+    # -DCMAKE_CXX_FLAGS=-std=c++11 \
+    -DPCL_ENABLE_SSE=ON \
+    -DPCL_SHARED_LIBS=ON && \
+    make -j$(nproc) && \
+    make install
+
+RUN cd / && \
+    rm -rf pcl
+
+###############################################################################
+# Install miniconda3
+###############################################################################
+
+# Download miniconda3
+RUN cd / && wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /miniconda.sh && \
+    sh /miniconda.sh -b -p /opt/conda && rm /miniconda.sh
+
+RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
+    echo "source /opt/conda/etc/profile.d/conda.sh" >> ~/.zshrc && \
+    /bin/zsh -c "source ~/.zshrc"
+
+RUN /opt/conda/bin/conda config --set ssl_verify no && \
+    /opt/conda/bin/conda config --add channels conda-forge && \
+    /opt/conda/bin/conda config --remove channels defaults && \
+    /opt/conda/bin/conda update -n base -c conda-forge --all -y && \
+    /opt/conda/bin/conda install -n base -c conda-forge mamba -y && \
+    /opt/conda/bin/conda clean -afy
+
+RUN /opt/conda/bin/conda create -n hopip python=3.9 -y
+
+# Install conda packages
+RUN /opt/conda/bin/conda init zsh && echo "conda activate hopip" >> ~/.zshrc
+
+# install pytorch 2.0.1 with CUDA 11.7
+RUN /opt/conda/envs/hopip/bin/python -m pip install --no-cache-dir torch==2.0.1+cu117 torchvision==0.15.2+cu117 --index-url https://download.pytorch.org/whl/cu117
+# compile and install pytorch3d
+RUN /opt/conda/envs/hopip/bin/python -m pip install --no-cache-dir fvcore==0.1.5.post20221221 ninja==1.11.1
+RUN /opt/conda/envs/hopip/bin/python -m pip install --no-cache-dir "git+https://github.com/facebookresearch/pytorch3d.git@stable"
+# install other packages
+RUN /opt/conda/envs/hopip/bin/python -m pip install --no-cache-dir \
+    jupyterlab==3.6.5 ipywidgets==7.7.5 \
+    tqdm==4.65.0 ruamel.yaml==0.17.32 \
+    numpy==1.24.1 scipy==1.9.3 matplotlib==3.7.2 \
+    scikit-learn==1.3.0 scikit-image==0.21.0 \
+    opencv-python==4.5.5.64 \
+    imageio==2.31.1 \
+    trimesh==3.22.4 pyrender==0.1.45 \
+    open3d==0.16.0 \
+    dearpygui==1.9.1 \
+    pytinyrenderer==0.0.14 \
+    mediapipe==0.10.2 kornia==0.6.12 einops==0.6.1 transformations==2022.9.26
+
+# Enable imageio to read/write images using FreeImage
+RUN /opt/conda/envs/hopip/bin/imageio_download_bin freeimage
+
+###############################################################################
+# Install kaolin
+###############################################################################
+
+# Download kaolin
+RUN cd / && git clone https://github.com/NVIDIAGameWorks/kaolin.git
+# Set environment variables
 ENV CUDA_HOME /usr/local/cuda
-ENV LD_LIBRARY_PATH /usr/local/cuda/lib64
-ENV OPENCV_IO_ENABLE_OPENEXR=1
+ENV TORCH_CUDA_ARCH_LIST '6.1 7.0 7.5 8.0 8.6'
+ENV OPENCV_IO_ENABLE_OPENEXR 1
+
+# Build and install kaolin
+RUN cd /kaolin && \
+    FORCE_CUDA=1 /opt/conda/envs/hopip/bin/python setup.py develop
 
 
-RUN imageio_download_bin freeimage
+# Switch back to dialog for any ad-hoc use of apt-get
+ENV DEBIAN_FRONTEND=dialog
 
-RUN conda activate py38 && cd /kaolin &&\
-    # sed -i "223i\    extra_compile_args['nvcc'] += ['-gencode=arch=compute_52,code=sm_52', '-gencode=arch=compute_60,code=sm_60', '-gencode=arch=compute_61,code=sm_61', '-gencode=arch=compute_70,code=sm_70', '-gencode=arch=compute_75,code=sm_75', '-gencode=arch=compute_80,code=sm_80', '-gencode=arch=compute_80,code=compute_80']" setup.py &&\
-    FORCE_CUDA=1 python setup.py develop
+###############################################################################
+# Set the working directory
+###############################################################################
+WORKDIR /app
 
-#### Kaolin will change numpy version
-RUN pip install transformations einops scikit-image awscli-plugin-endpoint gputil xatlas pymeshlab rtree dearpygui pytinyrenderer PyQt5 cython-npm chardet openpyxl
-
-RUN apt-get update --fix-missing && \
-    apt install -y rsync lbzip2 pigz zip p7zip-full p7zip-rar

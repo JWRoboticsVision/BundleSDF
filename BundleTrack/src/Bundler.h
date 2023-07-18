@@ -8,10 +8,8 @@
  * license agreement from NVIDIA CORPORATION is strictly prohibited.
  */
 
-
 #ifndef BUNDLER_HH__
 #define BUNDLER_HH__
-
 
 #include "Utils.h"
 #include "Frame.h"
@@ -39,7 +37,7 @@ public:
 
   std::shared_ptr<Frame> _newframe, _firstframe;
   std::deque<std::shared_ptr<Frame>> _keyframes;
-  std::map<int,std::shared_ptr<Frame>> _frames;    //!NOTE store past few frames and keyframes. To make easier get frame by id, needed by frame->_ref_frame_id
+  std::map<int, std::shared_ptr<Frame>> _frames; //! NOTE store past few frames and keyframes. To make easier get frame by id, needed by frame->_ref_frame_id
 
   std::shared_ptr<GluNet> _fm;
   // std::shared_ptr<Lfnet> _fm;
@@ -57,7 +55,6 @@ public:
   zmq::context_t _context;
   zmq::socket_t _socket;
 
-
 public:
   Bundler();
   Bundler(std::shared_ptr<YAML::Node> yml1);
@@ -73,8 +70,8 @@ public:
   void bruteForceCombination(std::set<std::shared_ptr<Frame>, FramePtrComparator> frames, std::set<std::shared_ptr<Frame>, FramePtrComparator> &best_frames, int pos, float &min_rot_dist);
   void selectKeyFramesForBA();
   std::vector<FramePair> getFeatureMatchPairs(std::vector<std::shared_ptr<Frame>> &frames);
-  void maxNumEdgePathDfs(std::shared_ptr<Frame> cur, std::shared_ptr<Frame> goal, const std::vector<std::shared_ptr<Frame>> &frames_pool,  std::set<std::shared_ptr<Frame>, FramePtrComparator> &path, std::set<std::shared_ptr<Frame>, FramePtrComparator> &best_path, std::map<std::set<std::shared_ptr<Frame>, FramePtrComparator>, bool> &visited, int &best_n_edges);
-  void nearEnoughRotSearch(std::shared_ptr<Frame> cur, std::shared_ptr<Frame> goal, const std::vector<std::shared_ptr<Frame>> &frames_pool,  std::set<std::shared_ptr<Frame>, FramePtrComparator> &path, std::set<std::shared_ptr<Frame>, FramePtrComparator> &best_path, std::map<std::set<std::shared_ptr<Frame>, FramePtrComparator>, bool> &visited);
+  void maxNumEdgePathDfs(std::shared_ptr<Frame> cur, std::shared_ptr<Frame> goal, const std::vector<std::shared_ptr<Frame>> &frames_pool, std::set<std::shared_ptr<Frame>, FramePtrComparator> &path, std::set<std::shared_ptr<Frame>, FramePtrComparator> &best_path, std::map<std::set<std::shared_ptr<Frame>, FramePtrComparator>, bool> &visited, int &best_n_edges);
+  void nearEnoughRotSearch(std::shared_ptr<Frame> cur, std::shared_ptr<Frame> goal, const std::vector<std::shared_ptr<Frame>> &frames_pool, std::set<std::shared_ptr<Frame>, FramePtrComparator> &path, std::set<std::shared_ptr<Frame>, FramePtrComparator> &best_path, std::map<std::set<std::shared_ptr<Frame>, FramePtrComparator>, bool> &visited);
   void saveNewframeResult();
   void saveFramesCloud(std::vector<std::shared_ptr<Frame>> frames, std::string prefix);
   void saveKeyframesPose();
