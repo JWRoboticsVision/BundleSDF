@@ -142,3 +142,6 @@ logs/
 !BundleTrack/XMem/inference/data
 run_used.yml
 .bash_history
+
+# vscode
+.vscode/
