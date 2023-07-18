@@ -1,11 +1,10 @@
 #!/bin/bash
 
-# get the project root directory
-CURR_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+source $(dirname $0)/config.sh
 
 # build the docker image
 docker build \
     --network host \
-    -t bundlesdf:latest \
-    -f $CURR_DIR/dockerfile \
-    $CURR_DIR
+    -t ${CONTAINER_NAME}:latest \
+    -f ${DOCKER_DIR}/dockerfile \
+    ${DOCKER_DIR}
