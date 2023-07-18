@@ -3,14 +3,21 @@
 # get the project root directory
 CURR_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 PROJ_ROOT=$(dirname "$CURR_DIR")
-GPU_ID=1
 SCRIPT_FILE="run_hopipe.py"
+DATASET_DIR=${PROJ_ROOT}/datasets/HoPipe/demo
 
-DATASET_DIR=${PROJ_ROOT}/datasets/hopip_data/object_pose_test
+# Set the GPU ID
+if [ -z "$1" ]
+then
+    GPU_ID=0
+else
+    GPU_ID=$1
+fi
 
+# Set the sequences and cameras
 ALL_SEQUENCES=(
-    "20230221_093329_jikai_right_hammer"
-    "20230228_094753_jikai_right_box"
+    "jikai_right_hammer"
+    "jikai_right_power_drill"
 )
 
 RS_CAMS=(
@@ -24,17 +31,32 @@ RS_CAMS=(
     "117222250549"
 )
 
+# Run the demo
 for SEQUENCE in ${ALL_SEQUENCES[@]} ; do
 
+    rm -rf ${DATASET_DIR}/${SEQUENCE}/data_processing/bundlesdf
+
     for CAM in ${RS_CAMS[@]} ; do
+
+        if [ ! -d ${DATASET_DIR}/${SEQUENCE}/data_processing/xmem/output/${CAM} ] ; then
+            echo "###############################################################################"
+            echo "!!! Skipping ${SEQUENCE}/${CAM}..."
+            echo "###############################################################################"
+            continue
+        fi
+
         INPUT_DIR=${DATASET_DIR}/${SEQUENCE}/${CAM}
         OUTPUT_DIR=${DATASET_DIR}/${SEQUENCE}/data_processing/bundlesdf/${CAM}
 
+        echo "###############################################################################"
+        echo "# Running demo on ${INPUT_DIR}..."
+        echo "###############################################################################"
+
         # Run joint tracking and reconstruction
-        echo "###############################################################################"
-        echo "1. Running joint tracking and reconstruction..."
-        echo "###############################################################################"
-        CUDA_VISIBLE_DEVICES=${GPU_ID} python ${SCRIPT_FILE} \
+        echo "==============================================================================="
+        echo "==============1. Running joint tracking and reconstruction...=================="
+        echo "==============================================================================="
+        CUDA_VISIBLE_DEVICES=$GPU_ID python ${SCRIPT_FILE} \
             --mode run_video \
             --video_dir ${INPUT_DIR} \
             --out_folder ${OUTPUT_DIR} \
@@ -43,19 +65,19 @@ for SEQUENCE in ${ALL_SEQUENCES[@]} ; do
             --debug_level 2
 
         # Run global refinement post-processing to refine the mesh
-        echo "###############################################################################"
-        echo "2. Running global refinement post-processing..."
-        echo "###############################################################################"
-        CUDA_VISIBLE_DEVICES=${GPU_ID} python ${SCRIPT_FILE} \
+        echo "==============================================================================="
+        echo "==============2. Running global refinement post-processing...=================="
+        echo "==============================================================================="
+        CUDA_VISIBLE_DEVICES=$GPU_ID python ${SCRIPT_FILE} \
             --mode global_refine \
             --video_dir ${INPUT_DIR} \
             --out_folder ${OUTPUT_DIR}
 
         # Get the auto-cleaned mesh
-        echo "###############################################################################"
-        echo "3. Getting the auto-cleaned mesh..."
-        echo "###############################################################################"
-        CUDA_VISIBLE_DEVICES=${GPU_ID} python ${SCRIPT_FILE} \
+        echo "==============================================================================="
+        echo "==============3. Getting the auto-cleaned mesh...=============================="
+        echo "==============================================================================="
+        CUDA_VISIBLE_DEVICES=$GPU_ID python ${SCRIPT_FILE} \
             --mode get_mesh \
             --video_dir ${INPUT_DIR} \
             --out_folder ${OUTPUT_DIR}
@@ -63,4 +85,3 @@ for SEQUENCE in ${ALL_SEQUENCES[@]} ; do
     done
 
 done
-
