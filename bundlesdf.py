@@ -632,7 +632,7 @@ class BundleSdf:
             visibles = np.array(visibles)
             ids = np.argsort(visibles)[::-1]
             found = False
-            pdb.set_trace()
+            # pdb.set_trace()
             for id in ids:
                 kf = self.bundler._keyframes[id]
                 logging.info(f"trying new ref frame {kf._id_str}")
