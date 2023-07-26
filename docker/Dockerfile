@@ -51,11 +51,11 @@ WORKDIR /
 
 # Install Eigen3
 ARG EIGEN_VERSION="3.4.0"
-RUN wget -q https://gitlab.com/libeigen/eigen/-/archive/${EIGEN_VERSION}/eigen-${EIGEN_VERSION}.tar.gz -O eigen.tar.gz && tar -xzf eigen.tar.gz && rm eigen.tar.gz && mv eigen-${EIGEN_VERSION} eigen \
-    && cd eigen && mkdir build && cd build \
+RUN wget -q https://gitlab.com/libeigen/eigen/-/archive/${EIGEN_VERSION}/eigen-${EIGEN_VERSION}.tar.gz -O eigen3.tar.gz && tar -xzf eigen3.tar.gz && rm eigen3.tar.gz && mv eigen-${EIGEN_VERSION} eigen3 \
+    && cd eigen3 && mkdir build && cd build \
     && cmake .. -Wno-dev -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-std=c++14 \
     && make install \
-    && cd ../../ && rm -rf eigen
+    && cd ../../ && rm -rf eigen3
 
 # Install Yaml-CPP
 ARG YAML_CPP_VERSION="0.7.0"
@@ -139,9 +139,10 @@ RUN echo "source /opt/conda/etc/profile.d/conda.sh" >> ${HOME}/.zshrc && source 
 COPY requirements.txt $HOME/requirements.txt
 RUN source ${HOME}/.zshrc && python -m pip install --quiet --no-cache-dir -r requirements.txt && rm requirements.txt
 # Install pytorch3d
-RUN source ${HOME}/.zshrc && FORCE_CUDA=1 python -m pip install --no-cache-dir "git+https://github.com/facebookresearch/pytorch3d.git@v0.7.4"
+RUN source ${HOME}/.zshrc && FORCE_CUDA=1 python -m pip install --no-cache-dir "git+https://github.com/facebookresearch/pytorch3d.git@stable"
 # Install kaolin
-RUN source ${HOME}/.zshrc && IGNORE_TORCH_VER=1 FORCE_CUDA=1 python -m pip install --no-cache-dir "git+https://github.com/NVIDIAGameWorks/kaolin.git"
+RUN source ${HOME}/.zshrc && FORCE_CUDA=1 python -m pip install --no-cache-dir "git+https://github.com/NVIDIAGameWorks/kaolin.git"
 
 # Set working directory
-WORKDIR ${HOME}/code
+ARG WORK_DIR="code"
+WORKDIR ${HOME}/${WORK_DIR}

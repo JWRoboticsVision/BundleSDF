@@ -2,4 +2,4 @@
 
 source $(dirname $0)/config.sh
 
-docker exec -it ${CONTAINER_NAME} /bin/zsh
+docker exec -it ${CONTAINER_DISPLAY_NAME} /bin/zsh

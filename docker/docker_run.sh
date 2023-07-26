@@ -15,10 +15,10 @@ docker run \
     --env DISPLAY=${DISPLAY} \
     --cap-add=SYS_PTRACE \
     --security-opt seccomp=unconfined \
-    --volume "${PROJ_ROOT}":/home/${USER_NAME}/code \
+    --volume "${PROJ_ROOT}":/home/${USER_NAME}/${WORK_DIR} \
     --volume /tmp/.X11-unix:/tmp/.X11-unix \
     --volume /etc/localtime:/etc/localtime:ro \
-    --name ${CONTAINER_NAME} \
+    --name ${CONTAINER_DISPLAY_NAME} \
     ${CONTAINER_NAME}:${CONTAINER_TAG}
 
 sleep 1
