@@ -189,226 +189,207 @@ class Ho3dReader:
         return ob_in_cam_gt
 
 
-class DexYcbReader(YcbineoatReader):
-    def __init__(self, video_dir):
-        self.calib_dir = os.path.join(DEX_YCB_ROOT, "calibration")
-        self.video_dir = video_dir
-        self.cam_name = os.path.basename(self.video_dir)
+class DexYcbReader:
+    def __init__(self, sequence_folder) -> None:
+        self.sequence_folder = os.path.abspath(sequence_folder)
+        self.calib_folder = os.path.abspath(
+            os.path.join(self.sequence_folder, "../../calibration")
+        )
+        self.models_folder = os.path.abspath(
+            os.path.join(self.sequence_folder, "../../models")
+        )
         self.H = 480
         self.W = 640
-        # read meta data
-        self.read_meta_data()
-        # read K matrix
-        self.read_K_matrix()
-        # read camera pose
-        self.read_cam_pose()
 
-        self.id_strs = [f"{i:06d}" for i in range(self.num_frames)]
-        self.color_files = [
-            os.path.join(self.video_dir, f"color_{self.id_strs[i]}.jpg")
-            for i in range(self.num_frames)
-        ]
-        self.depth_files = [
-            os.path.join(
-                self.video_dir, f"aligned_depth_to_color_{self.id_strs[i]}.png"
-            )
-            for i in range(self.num_frames)
-        ]
-        self.label_files = [
-            os.path.join(self.video_dir, f"labels_{self.id_strs[i]}.npz")
-            for i in range(self.num_frames)
-        ]
-        # self.ob_in_cams = self.read_obj_poses()
+        self.color_prefix = "color_{:06d}.jpg"
+        self.depth_prefix = "aligned_depth_to_color_{:06d}.png"
+        self.label_prefix = "labels_{:06d}.npz"
 
-    def read_meta_data(self):
-        meta_file = os.path.join(self.video_dir, "../meta.yml")
-        with open(meta_file, "r") as ff:
-            data = yaml.load(ff)
-
+        # load meta_data
+        data = self.load_data_from_yaml(os.path.join(self.sequence_folder, "meta.yml"))
+        serials = data["serials"]
         self.num_frames = data["num_frames"]
         self.ycb_grasp_ind = data["ycb_grasp_ind"]
         self.ycb_ids = data["ycb_ids"]
+        self.ycb_id = self.ycb_ids[self.ycb_grasp_ind]
         self.extr_file = os.path.join(
-            self.calib_dir, f"extrinsics_{data['extrinsics']}/extrinsics.yml"
-        )
-        self.intr_file = os.path.join(
-            self.calib_dir, f"intrinsics/{self.cam_name}_{self.W}x{self.H}.yml"
+            self.calib_folder, f"extrinsics_{data['extrinsics']}/extrinsics.yml"
         )
 
-    def read_K_matrix(self):
-        with open(self.intr_file, "r") as ff:
-            data = yaml.load(ff)
+        # load extrinsics
+        data = self.load_data_from_yaml(self.extr_file)
+        master = data["master"]
+        self.serials = [master] + [s for s in serials if s != master]
+        self.Ts = {
+            key: np.array(
+                [
+                    [
+                        data["extrinsics"][key][0],
+                        data["extrinsics"][key][1],
+                        data["extrinsics"][key][2],
+                        data["extrinsics"][key][3],
+                    ],
+                    [
+                        data["extrinsics"][key][4],
+                        data["extrinsics"][key][5],
+                        data["extrinsics"][key][6],
+                        data["extrinsics"][key][7],
+                    ],
+                    [
+                        data["extrinsics"][key][8],
+                        data["extrinsics"][key][9],
+                        data["extrinsics"][key][10],
+                        data["extrinsics"][key][11],
+                    ],
+                    [0, 0, 0, 1],
+                ],
+                dtype=np.float32,
+            )
+            for key in data["extrinsics"]
+        }
 
-        self.K = np.array(
+        # load intrinsics
+        self.Ks = {
+            s: self.load_K_from_yaml(
+                os.path.join(self.calib_folder, f"intrinsics/{s}_{self.W}x{self.H}.yml")
+            )
+            for s in self.serials
+        }
+
+    def load_data_from_yaml(self, yaml_file, version=(1, 1)):
+        yaml = ruamel.yaml.YAML()
+        yaml.version = version
+        with open(yaml_file, "r") as f:
+            data = yaml.load(f)
+        return data
+
+    def load_K_from_yaml(self, yaml_file, camera_type="color"):
+        data = self.load_data_from_yaml(yaml_file)
+        K = np.array(
             [
-                [data["color"]["fx"], 0, data["color"]["ppx"]],
-                [0, data["color"]["fy"], data["color"]["ppy"]],
+                [data[camera_type]["fx"], 0, data[camera_type]["ppx"]],
+                [0, data[camera_type]["fy"], data[camera_type]["ppy"]],
                 [0, 0, 1],
             ],
             dtype=np.float32,
         )
+        return K
 
-    def read_cam_pose(self):
-        with open(self.extr_file, "r") as ff:
-            data = yaml.load(ff)
-
-        self.master_cam = data["master"]
-        self.cam_in_world = np.array(
-            [
-                [
-                    data["extrinsics"][self.cam_name][0],
-                    data["extrinsics"][self.cam_name][1],
-                    data["extrinsics"][self.cam_name][2],
-                    data["extrinsics"][self.cam_name][3],
-                ],
-                [
-                    data["extrinsics"][self.cam_name][4],
-                    data["extrinsics"][self.cam_name][5],
-                    data["extrinsics"][self.cam_name][6],
-                    data["extrinsics"][self.cam_name][7],
-                ],
-                [
-                    data["extrinsics"][self.cam_name][8],
-                    data["extrinsics"][self.cam_name][9],
-                    data["extrinsics"][self.cam_name][10],
-                    data["extrinsics"][self.cam_name][11],
-                ],
-                [0, 0, 0, 1],
-            ],
-            dtype=np.float32,
+    def get_color(self, serial, frame_id):
+        color_file = os.path.join(
+            self.sequence_folder, serial, self.color_prefix.format(frame_id)
         )
-
-    def read_obj_poses(self):
-        from scipy.spatial.transform import Rotation as Rot
-
-        pose_file = os.path.join(self.video_dir, "../pose.npz")
-        poses = np.load(pose_file)["pose_y"][:, self.ycb_grasp_ind]
-        ob_in_worlds = []
-        for i in range(self.num_frames):
-            pp = poses[i]
-            ob_in_world = np.eye(4)
-            ob_in_world[:3, :3] = Rot.from_quat(pp[:4]).as_matrix()
-            ob_in_world[:3, 3] = pp[4:]
-            ob_in_worlds.append(ob_in_world)
-        ob_in_worlds = np.array(ob_in_worlds, dtype=np.float32)
-        ob_in_cams = np.linalg.inv(self.cam_in_world)[:3, :] @ ob_in_worlds
-        return ob_in_cams
-
-    def get_color(self, i):
-        color = cv2.imread(self.color_files[i])
+        color = cv2.imread(color_file)
         return color
 
-    def get_depth(self, i):
+    def get_depth(self, serial, frame_id):
         depth_file = os.path.join(
-            self.video_dir, f"aligned_depth_to_color_{self.id_strs[i]}.png"
+            self.sequence_folder, serial, self.depth_prefix.format(frame_id)
         )
-        depth = cv2.imread(depth_file, -1).astype(np.float32) / 1000.0
+        depth = cv2.imread(depth_file, cv2.IMREAD_ANYDEPTH)
+        depth = depth.astype(np.float32) / 1000.0
         return depth
 
-    def get_mask(self, i):
-        seg = np.load(self.label_files[i])["seg"]
-        mask = seg == self.ycb_ids[self.ycb_grasp_ind]
+    def get_mask(self, serial, frame_id):
+        label_file = os.path.join(
+            self.sequence_folder, serial, self.label_prefix.format(frame_id)
+        )
+        seg = np.load(label_file)["seg"]
+        mask = seg == self.ycb_id
         return mask.astype(np.uint8)
 
-    # def get_gt_pose(self, i):
-    #     return self.ob_in_cams[i].copy()
 
-
-class HoPipeReader(YcbineoatReader):
-    def __init__(self, video_dir):
-        self.video_dir = video_dir
-        self.calib_dir = os.path.join(HO_PIPE_ROOT, "calibration")
-        self.cam_name = os.path.basename(self.video_dir)
-        self.mask_dir = os.path.join(
-            self.video_dir, f"../data_processing/xmem/output/{self.cam_name}"
+class HoPipeReader:
+    def __init__(self, sequence_folder):
+        self.sequence_folder = os.path.abspath(sequence_folder)
+        self.calib_folder = os.path.abspath(
+            os.path.join(self.sequence_folder, "../../calibration")
+        )
+        self.mask_folder = os.path.abspath(
+            os.path.join(self.sequence_folder, "data_processing/xmem/output")
         )
 
-        # load meta data
-        self.read_meta_data()
-        # load K matrix
-        self.read_K_matrix()
-        # load cam pose
-        self.read_cam_pose()
-
-        self.id_strs = [f"{i:06d}" for i in range(self.num_frames)]
-
-        self.color_files = [
-            os.path.join(self.video_dir, f"color_{i}.jpg") for i in self.id_strs
-        ]
-        self.depth_files = [
-            os.path.join(self.video_dir, f"depth_{i}.png") for i in self.id_strs
-        ]
-        self.mask_files = [
-            os.path.join(self.mask_dir, f"color_{i}.png") for i in self.id_strs
-        ]
-
-    def read_meta_data(self):
-        with open(os.path.join(self.video_dir, "../meta.yml"), "r") as ff:
-            data = yaml.load(ff)
-
+        # load meta_data
+        data = self.load_data_from_yaml(os.path.join(self.sequence_folder, "meta.yml"))
+        serials = data["realsense"]["rs_serials"]
         self.num_frames = data["num_frames"]
         self.H = data["realsense"]["rs_height"]
         self.W = data["realsense"]["rs_width"]
         self.extr_file = os.path.join(
-            self.calib_dir, f"extrinsics/{data['calibration']['extrinsics_file']}"
+            self.calib_folder, f"extrinsics/{data['calibration']['extrinsics_file']}"
         )
-        self.intr_file = os.path.join(self.calib_dir, f"intrinsics/{self.cam_name}.yml")
 
-    def read_K_matrix(self):
-        with open(self.intr_file, "r") as ff:
-            data = yaml.load(ff)
+        # load extrinsics
+        data = self.load_data_from_yaml(self.extr_file)
+        master = data["rs_master"]
+        self.serials = [master] + [s for s in serials if s != master]
+        self.Ts = {
+            key: np.array(
+                [
+                    [
+                        data["extrinsics"][key]["rotation"][0],
+                        data["extrinsics"][key]["rotation"][1],
+                        data["extrinsics"][key]["rotation"][2],
+                        data["extrinsics"][key]["translation"][0],
+                    ],
+                    [
+                        data["extrinsics"][key]["rotation"][3],
+                        data["extrinsics"][key]["rotation"][4],
+                        data["extrinsics"][key]["rotation"][5],
+                        data["extrinsics"][key]["translation"][1],
+                    ],
+                    [
+                        data["extrinsics"][key]["rotation"][6],
+                        data["extrinsics"][key]["rotation"][7],
+                        data["extrinsics"][key]["rotation"][8],
+                        data["extrinsics"][key]["translation"][2],
+                    ],
+                    [0, 0, 0, 1],
+                ],
+                dtype=np.float32,
+            )
+            for key in data["extrinsics"]
+        }
 
-        self.K = np.array(
+        # load intrinsics
+        self.Ks = {
+            s: self.load_K_from_yaml(
+                os.path.join(self.calib_folder, f"intrinsics/{s}.yml")
+            )
+            for s in self.serials
+        }
+
+    def load_data_from_yaml(self, yaml_file, version=(1, 1)):
+        yaml = ruamel.yaml.YAML()
+        yaml.version = version
+        with open(yaml_file, "r") as f:
+            data = yaml.load(f)
+        return data
+
+    def load_K_from_yaml(self, yaml_file, camera_type="color"):
+        data = self.load_data_from_yaml(yaml_file)
+        K = np.array(
             [
-                [data["color"]["fx"], 0, data["color"]["ppx"]],
-                [0, data["color"]["fy"], data["color"]["ppy"]],
+                [data[camera_type]["fx"], 0, data[camera_type]["ppx"]],
+                [0, data[camera_type]["fy"], data[camera_type]["ppy"]],
                 [0, 0, 1],
             ],
             dtype=np.float32,
         )
+        return K
 
-    def read_cam_pose(self):
-        with open(self.extr_file, "r") as ff:
-            data = yaml.load(ff)
-
-        self.master_cam = data["rs_master"]
-        extrinsics = data["extrinsics"][self.cam_name]
-        self.cam_in_world = np.array(
-            [
-                [
-                    extrinsics["rotation"][0],
-                    extrinsics["rotation"][1],
-                    extrinsics["rotation"][2],
-                    extrinsics["translation"][0],
-                ],
-                [
-                    extrinsics["rotation"][3],
-                    extrinsics["rotation"][4],
-                    extrinsics["rotation"][5],
-                    extrinsics["translation"][1],
-                ],
-                [
-                    extrinsics["rotation"][6],
-                    extrinsics["rotation"][7],
-                    extrinsics["rotation"][8],
-                    extrinsics["translation"][2],
-                ],
-                [0, 0, 0, 1],
-            ],
-            dtype=np.float32,
-        )
-
-    def get_color(self, i):
-        color = cv2.imread(self.color_files[i])
+    def get_color(self, serial, i):
+        color_file = os.path.join(self.sequence_folder, serial, f"color_{i:06d}.jpg")
+        color = cv2.imread(color_file)
         return color
 
-    def get_depth(self, i):
-        depth_file = os.path.join(self.video_dir, f"depth_{self.id_strs[i]}.png")
+    def get_depth(self, serial, i):
+        depth_file = os.path.join(self.sequence_folder, serial, f"depth_{i:06d}.png")
         depth = cv2.imread(depth_file, -1).astype(np.float32) / 1000.0
         return depth
 
-    def get_mask(self, i):
-        mask = cv2.imread(self.mask_files[i], -1)
-        if len(mask.shape) == 3:
-            mask = (mask > 0).any(axis=-1)
+    def get_mask(self, serial, i):
+        mask_file = os.path.join(self.mask_folder, serial, f"color_{i:06d}.png")
+        mask = cv2.imread(mask_file, cv2.IMREAD_GRAYSCALE)
+        mask = mask > 0
         return mask.astype(np.uint8)

@@ -2,25 +2,29 @@ from bundlesdf import *
 import argparse
 import os, sys
 
-code_dir = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(code_dir)
-# from vos_wrapper import XmemRunner
-
 PROJ_ROOT = os.path.dirname(os.path.realpath(__file__))
+if PROJ_ROOT not in sys.path:
+    sys.path.append(PROJ_ROOT)
 
 
-def run_one_video(
-    video_dir="/home/bowen/debug/2022-11-18-15-10-24_milk",
-    out_folder="/home/bowen/debug/bundlesdf_2022-11-18-15-10-24_milk/",
-    use_segmenter=False,
-    use_gui=False,
-):
+def make_clean_folder(folder):
+    if os.path.exists(folder):
+        shutil.rmtree(folder)
+    os.makedirs(folder)
+
+
+def run_one_video(sequence_folder, serial, use_gui=False):
     set_seed(0)
-    os.system(f"rm -rf {out_folder} && mkdir -p {out_folder}")
 
-    cfg_bundletrack = yaml.load(open(f"{code_dir}/BundleTrack/config_ho3d.yml", "r"))
+    # make clean output folder
+    out_folder = os.path.abspath(
+        os.path.join(sequence_folder, f"data_processing/bundlesdf/one_video/{serial}")
+    )
+    make_clean_folder(out_folder)
+
+    cfg_bundletrack = yaml.load(open(f"{PROJ_ROOT}/BundleTrack/config_ho3d.yml", "r"))
     cfg_bundletrack["SPDLOG"] = int(args.debug_level)
-    cfg_bundletrack["depth_processing"]["zfar"] = 1
+    cfg_bundletrack["depth_processing"]["zfar"] = 2
     cfg_bundletrack["depth_processing"]["percentile"] = 95
     cfg_bundletrack["erode_mask"] = 3
     cfg_bundletrack["debug_dir"] = out_folder + "/"
@@ -45,7 +49,7 @@ def run_one_video(
     cfg_track_dir = f"{out_folder}/config_bundletrack.yml"
     yaml.dump(cfg_bundletrack, open(cfg_track_dir, "w"))
 
-    cfg_nerf = yaml.load(open(f"{code_dir}/config.yml", "r"))
+    cfg_nerf = yaml.load(open(f"{PROJ_ROOT}/config.yml", "r"))
     cfg_nerf["continual"] = True
     cfg_nerf["trunc_start"] = 0.01
     cfg_nerf["trunc"] = 0.01
@@ -61,43 +65,18 @@ def run_one_video(
     cfg_nerf_dir = f"{out_folder}/config_nerf.yml"
     yaml.dump(cfg_nerf, open(cfg_nerf_dir, "w"))
 
-    # if use_segmenter:
-    #     segmenter = XmemRunner()
+    reader = DexYcbReader(sequence_folder=sequence_folder)
 
     tracker = BundleSdf(
         cfg_track_dir=cfg_track_dir,
         cfg_nerf_dir=cfg_nerf_dir,
-        start_nerf_keyframes=5,
+        start_nerf_keyframes=3,
         use_gui=use_gui,
     )
-
-    reader = DexYcbReader(video_dir=video_dir)
-    for i in range(0, len(reader.color_files), args.stride):
-        color_file = reader.color_files[i]
-        color = cv2.imread(color_file)
-        # H0, W0 = color.shape[:2]
-        depth = reader.get_depth(i)
-        # H, W = depth.shape[:2]
-        # color = cv2.resize(color, (W, H), interpolation=cv2.INTER_NEAREST)
-        # depth = cv2.resize(depth, (W, H), interpolation=cv2.INTER_NEAREST)
-
-        if i == 0:
-            mask = reader.get_mask(0)
-            # mask = cv2.resize(mask, (W, H), interpolation=cv2.INTER_NEAREST)
-            if use_segmenter:
-                # mask = segmenter.run(
-                #     img=color, msk=mask, is_end=i == len(reader.color_files) - 1
-                # )
-                pass
-        else:
-            if use_segmenter:
-                # mask = segmenter.run(
-                #     img=color, msk=None, is_end=i == len(reader.color_files) - 1
-                # )
-                pass
-            else:
-                mask = reader.get_mask(i)
-                # mask = cv2.resize(mask, (W, H), interpolation=cv2.INTER_NEAREST)
+    for i in range(reader.num_frames):
+        color = reader.get_color(serial, i)
+        depth = reader.get_depth(serial, i)
+        mask = reader.get_mask(serial, i)
 
         if cfg_bundletrack["erode_mask"] > 0:
             kernel = np.ones(
@@ -105,10 +84,9 @@ def run_one_video(
             )
             mask = cv2.erode(mask.astype(np.uint8), kernel)
 
-        id_str = reader.id_strs[i]
+        id_str = f"{i:06d}"
         pose_in_model = np.eye(4)
-
-        K = reader.K.copy()
+        K = reader.Ks[serial]
 
         tracker.run(
             color,
@@ -120,16 +98,19 @@ def run_one_video(
             pose_in_model=pose_in_model,
         )
     tracker.on_finish()
+
+    # global refine nerf
     run_one_video_global_nerf(out_folder=out_folder)
 
+    # postprocess mesh
+    postprocess_mesh(out_folder=out_folder)
 
-def run_one_video_global_nerf(out_folder="/home/bowen/debug/bundlesdf_scan_coffee_415"):
+
+def run_one_video_global_nerf(out_folder):
     set_seed(0)
 
-    out_folder += "/"  #!NOTE there has to be a / in the end
-
     cfg_bundletrack = yaml.load(open(f"{out_folder}/config_bundletrack.yml", "r"))
-    cfg_bundletrack["debug_dir"] = out_folder
+    cfg_bundletrack["debug_dir"] = out_folder + "/"
     cfg_track_dir = f"{out_folder}/config_bundletrack.yml"
     yaml.dump(cfg_bundletrack, open(cfg_track_dir, "w"))
 
@@ -160,10 +141,8 @@ def run_one_video_global_nerf(out_folder="/home/bowen/debug/bundlesdf_scan_coffe
     cfg_nerf_dir = f"{cfg_nerf['datadir']}/config.yml"
     yaml.dump(cfg_nerf, open(cfg_nerf_dir, "w"))
 
-    # reader = DexYcbReader(video_dir=args.video_dir)
-
     tracker = BundleSdf(
-        cfg_track_dir=cfg_track_dir, cfg_nerf_dir=cfg_nerf_dir, start_nerf_keyframes=5
+        cfg_track_dir=cfg_track_dir, cfg_nerf_dir=cfg_nerf_dir, start_nerf_keyframes=3
     )
     tracker.cfg_nerf = cfg_nerf
     tracker.run_global_nerf(get_texture=False, tex_res=512)
@@ -214,48 +193,23 @@ def postprocess_mesh(out_folder):
     mesh.export(f"{out_folder}/mesh/mesh_biggest_component_smoothed.obj")
 
 
-if __name__ == "__main__":
+def args_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--mode",
-        type=str,
-        default="run_video",
-        help="run_video / global_refine / get_mesh",
-    )
-    parser.add_argument(
-        "--video_dir",
-        type=str,
-        default=os.path.join(
-            PROJ_ROOT,
-            "datasets/dex_ycb_selected/20201015-subject-09/20201015_142601/840412060917",
-        ),
-    )
-    parser.add_argument(
-        "--out_folder", type=str, default="/home/bowen/debug/bundlesdf_out"
-    )
-    parser.add_argument("--use_segmenter", type=int, default=0)
-    parser.add_argument("--use_gui", type=int, default=1)
-    parser.add_argument(
-        "--stride",
-        type=int,
-        default=1,
-        help="interval of frames to run; 1 means using every frame",
-    )
+    parser.add_argument("--sequence_folder", type=str, required=True)
+    parser.add_argument("--serial", type=str, required=True)
+    parser.add_argument("--use_gui", type=int, default=1, help="use gui or not")
     parser.add_argument(
         "--debug_level", type=int, default=2, help="higher means more logging"
     )
     args = parser.parse_args()
+    return args
 
-    if args.mode == "run_video":
-        run_one_video(
-            video_dir=args.video_dir,
-            out_folder=args.out_folder,
-            use_segmenter=args.use_segmenter,
-            use_gui=args.use_gui,
-        )
-    elif args.mode == "global_refine":
-        run_one_video_global_nerf(out_folder=args.out_folder)
-    elif args.mode == "get_mesh":
-        postprocess_mesh(out_folder=args.out_folder)
-    else:
-        raise RuntimeError
+
+if __name__ == "__main__":
+    args = args_parser()
+
+    run_one_video(
+        sequence_folder=args.sequence_folder,
+        serial=args.serial,
+        use_gui=args.use_gui,
+    )

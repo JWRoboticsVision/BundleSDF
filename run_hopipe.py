@@ -3,27 +3,35 @@ import argparse
 import os, sys
 
 PROJ_ROOT = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(PROJ_ROOT)
+if PROJ_ROOT not in sys.path:
+    sys.path.append(PROJ_ROOT)
 
 
-def run_one_video(
-    video_dir=os.path.join(
-        PROJ_ROOT,
-        "datasets/hopip_data/object_pose_test/20230221_093329_jikai_right_hammer/105322251564",
-    ),
-    out_folder=os.path.join(
-        PROJ_ROOT,
-        "datasets/hopip_data/object_pose_test/20230221_093329_jikai_right_hammer/data_processing/bundlesdf/105322251564",
-    ),
-    use_segmenter=False,
-    use_gui=False,
-):
+def make_clean_folder(folder):
+    if os.path.exists(folder):
+        shutil.rmtree(folder)
+    os.makedirs(folder)
+
+
+def run_one_video(sequence_folder, serial, use_gui=False):
+    reader = HoPipeReader(sequence_folder=sequence_folder)
+    mask_folder = os.path.join(reader.mask_folder, serial)
+    print(f"Mask folder: {mask_folder}")
+    if not os.path.exists(mask_folder):
+        print(f"Mask folder {mask_folder} does not exist, skip...")
+        return
+
     set_seed(0)
-    os.system(f"rm -rf {out_folder} && mkdir -p {out_folder}")
+
+    # make clean output folder
+    out_folder = os.path.abspath(
+        os.path.join(sequence_folder, f"data_processing/bundlesdf/one_video/{serial}")
+    )
+    make_clean_folder(out_folder)
 
     cfg_bundletrack = yaml.load(open(f"{PROJ_ROOT}/BundleTrack/config_ho3d.yml", "r"))
     cfg_bundletrack["SPDLOG"] = int(args.debug_level)
-    cfg_bundletrack["depth_processing"]["zfar"] = 1
+    cfg_bundletrack["depth_processing"]["zfar"] = 2
     cfg_bundletrack["depth_processing"]["percentile"] = 95
     cfg_bundletrack["erode_mask"] = 3
     cfg_bundletrack["debug_dir"] = out_folder + "/"
@@ -52,7 +60,7 @@ def run_one_video(
     cfg_nerf["continual"] = True
     cfg_nerf["trunc_start"] = 0.01
     cfg_nerf["trunc"] = 0.01
-    cfg_nerf["mesh_resolution"] = 0.003
+    cfg_nerf["mesh_resolution"] = 0.005
     cfg_nerf["down_scale_ratio"] = 1
     cfg_nerf["fs_sdf"] = 0.1
     cfg_nerf["far"] = cfg_bundletrack["depth_processing"]["zfar"]
@@ -67,15 +75,13 @@ def run_one_video(
     tracker = BundleSdf(
         cfg_track_dir=cfg_track_dir,
         cfg_nerf_dir=cfg_nerf_dir,
-        start_nerf_keyframes=5,
+        start_nerf_keyframes=3,
         use_gui=use_gui,
     )
-
-    reader = HoPipeReader(video_dir=video_dir)
-    for i in range(0, reader.num_frames, args.stride):
-        color = reader.get_color(i)
-        depth = reader.get_depth(i)
-        mask = reader.get_mask(i)
+    for i in range(reader.num_frames):
+        color = reader.get_color(serial, i)
+        depth = reader.get_depth(serial, i)
+        mask = reader.get_mask(serial, i)
 
         if cfg_bundletrack["erode_mask"] > 0:
             kernel = np.ones(
@@ -83,10 +89,9 @@ def run_one_video(
             )
             mask = cv2.erode(mask.astype(np.uint8), kernel)
 
-        id_str = reader.id_strs[i]
-        pose_in_model = np.eye(4, dtype=np.float32)
-
-        K = reader.K.copy()
+        id_str = f"{i:06d}"
+        pose_in_model = np.eye(4)
+        K = reader.Ks[serial]
 
         tracker.run(
             color,
@@ -97,25 +102,20 @@ def run_one_video(
             occ_mask=None,
             pose_in_model=pose_in_model,
         )
-
     tracker.on_finish()
 
-    # run global nerf
+    # global refine nerf
     run_one_video_global_nerf(out_folder=out_folder)
 
+    # postprocess mesh
+    postprocess_mesh(out_folder=out_folder)
 
-def run_one_video_global_nerf(
-    out_folder=os.path.join(
-        PROJ_ROOT,
-        "datasets/hopip_data/object_pose_test/20230221_093329_jikai_right_hammer/data_processing/bundlesdf/105322251564",
-    ),
-):
+
+def run_one_video_global_nerf(out_folder):
     set_seed(0)
 
-    out_folder += "/"  #!NOTE there has to be a / in the end
-
     cfg_bundletrack = yaml.load(open(f"{out_folder}/config_bundletrack.yml", "r"))
-    cfg_bundletrack["debug_dir"] = out_folder
+    cfg_bundletrack["debug_dir"] = out_folder + "/"
     cfg_track_dir = f"{out_folder}/config_bundletrack.yml"
     yaml.dump(cfg_bundletrack, open(cfg_track_dir, "w"))
 
@@ -147,11 +147,10 @@ def run_one_video_global_nerf(
     yaml.dump(cfg_nerf, open(cfg_nerf_dir, "w"))
 
     tracker = BundleSdf(
-        cfg_track_dir=cfg_track_dir, cfg_nerf_dir=cfg_nerf_dir, start_nerf_keyframes=5
+        cfg_track_dir=cfg_track_dir, cfg_nerf_dir=cfg_nerf_dir, start_nerf_keyframes=3
     )
     tracker.cfg_nerf = cfg_nerf
-    # tracker.run_global_nerf(get_texture=False, tex_res=512)
-    tracker.run_global_nerf(get_texture=True, tex_res=512)
+    tracker.run_global_nerf(get_texture=False, tex_res=512)
     tracker.on_finish()
 
     print(f"Done")
@@ -199,60 +198,23 @@ def postprocess_mesh(out_folder):
     mesh.export(f"{out_folder}/mesh/mesh_biggest_component_smoothed.obj")
 
 
-if __name__ == "__main__":
+def args_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--mode",
-        type=str,
-        default="run_video",
-        help="run_video / global_refine / get_mesh",
-    )
-    parser.add_argument(
-        "--video_dir",
-        type=str,
-        default=os.path.join(
-            PROJ_ROOT,
-            "datasets/hopip_data/object_pose_test/20230221_093329_jikai_right_hammer/105322251564",
-        ),
-    )
-    parser.add_argument(
-        "--out_folder",
-        type=str,
-        default=os.path.join(
-            PROJ_ROOT,
-            "datasets/hopip_data/object_pose_test/20230221_093329_jikai_right_hammer/data_processing/bundlesdf/105322251564",
-        ),
-    )
-    parser.add_argument("--use_segmenter", type=int, default=0)
-    parser.add_argument("--use_gui", type=int, default=1)
-    parser.add_argument(
-        "--stride",
-        type=int,
-        default=1,
-        help="interval of frames to run; 1 means using every frame",
-    )
+    parser.add_argument("--sequence_folder", type=str, required=True)
+    parser.add_argument("--serial", type=str, required=True)
+    parser.add_argument("--use_gui", type=int, default=1, help="use gui or not")
     parser.add_argument(
         "--debug_level", type=int, default=2, help="higher means more logging"
     )
     args = parser.parse_args()
+    return args
 
-    cam_serial = os.path.basename(args.video_dir)
-    mask_dir = os.path.join(
-        args.video_dir, f"../data_processing/xmem/output/{cam_serial}"
+
+if __name__ == "__main__":
+    args = args_parser()
+
+    run_one_video(
+        sequence_folder=args.sequence_folder,
+        serial=args.serial,
+        use_gui=args.use_gui,
     )
-    if not os.path.exists(mask_dir):
-        exit(f"Mask dir {mask_dir} does not exist, skip...")
-
-    if args.mode == "run_video":
-        run_one_video(
-            video_dir=args.video_dir,
-            out_folder=args.out_folder,
-            use_segmenter=args.use_segmenter,
-            use_gui=args.use_gui,
-        )
-    elif args.mode == "global_refine":
-        run_one_video_global_nerf(out_folder=args.out_folder)
-    elif args.mode == "get_mesh":
-        postprocess_mesh(out_folder=args.out_folder)
-    else:
-        raise RuntimeError

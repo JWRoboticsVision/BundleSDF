@@ -3,7 +3,7 @@
 # get the project root directory
 CURR_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 PROJ_ROOT=$(dirname "$CURR_DIR")
-SCRIPT_FILE="run_hopipe.py"
+SCRIPT_FILE=${PROJ_ROOT}/run_hopipe.py
 DATASET_DIR=${PROJ_ROOT}/datasets/HoPipe/demo
 
 # Set the GPU ID
@@ -34,53 +34,17 @@ RS_CAMS=(
 # Run the demo
 for SEQUENCE in ${ALL_SEQUENCES[@]} ; do
 
-    rm -rf ${DATASET_DIR}/${SEQUENCE}/data_processing/bundlesdf
-
     for CAM in ${RS_CAMS[@]} ; do
 
-        if [ ! -d ${DATASET_DIR}/${SEQUENCE}/data_processing/xmem/output/${CAM} ] ; then
-            echo "###############################################################################"
-            echo "!!! Skipping ${SEQUENCE}/${CAM}..."
-            echo "###############################################################################"
-            continue
-        fi
-
-        INPUT_DIR=${DATASET_DIR}/${SEQUENCE}/${CAM}
-        OUTPUT_DIR=${DATASET_DIR}/${SEQUENCE}/data_processing/bundlesdf/${CAM}
-
         echo "###############################################################################"
-        echo "# Running demo on ${INPUT_DIR}..."
+        echo "# Processing sequence ${SEQUENCE} - ${CAM}"
         echo "###############################################################################"
 
-        # Run joint tracking and reconstruction
-        echo "==============================================================================="
-        echo "==============1. Running joint tracking and reconstruction...=================="
-        echo "==============================================================================="
         CUDA_VISIBLE_DEVICES=$GPU_ID python ${SCRIPT_FILE} \
-            --mode run_video \
-            --video_dir ${INPUT_DIR} \
-            --out_folder ${OUTPUT_DIR} \
-            --use_segmenter 0 \
+            --sequence_folder ${DATASET_DIR}/${SEQUENCE} \
+            --serial ${CAM} \
             --use_gui 1 \
             --debug_level 2
-
-        # Run global refinement post-processing to refine the mesh
-        echo "==============================================================================="
-        echo "==============2. Running global refinement post-processing...=================="
-        echo "==============================================================================="
-        CUDA_VISIBLE_DEVICES=$GPU_ID python ${SCRIPT_FILE} \
-            --mode global_refine \
-            --video_dir ${INPUT_DIR} \
-            --out_folder ${OUTPUT_DIR}
-
-        # Get the auto-cleaned mesh
-        echo "==============================================================================="
-        echo "==============3. Getting the auto-cleaned mesh...=============================="
-        echo "==============================================================================="
-        CUDA_VISIBLE_DEVICES=$GPU_ID python ${SCRIPT_FILE} \
-            --mode get_mesh \
-            --video_dir ${INPUT_DIR} \
-            --out_folder ${OUTPUT_DIR}
 
     done
 
