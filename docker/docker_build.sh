@@ -16,6 +16,8 @@ time docker build \
     --build-arg PYBIND11_VERSION=${PYBIND11_VERSION} \
     --build-arg OPENCV_VERSION=${OPENCV_VERSION} \
     --build-arg PCL_VERSION=${PCL_VERSION} \
+    --build-arg PYTORCH3D_VERSION=${PYTORCH3D_VERSION} \
+    --build-arg KAOLIN_VERSION=${KAOLIN_VERSION} \
     --build-arg WORK_DIR=${WORK_DIR} \
     --file ${DOCKER_DIR}/Dockerfile \
     --tag ${CONTAINER_NAME}:${CONTAINER_TAG} \

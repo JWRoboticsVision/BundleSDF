@@ -139,9 +139,11 @@ RUN echo "source /opt/conda/etc/profile.d/conda.sh" >> ${HOME}/.zshrc && source 
 COPY requirements.txt $HOME/requirements.txt
 RUN source ${HOME}/.zshrc && python -m pip install --quiet --no-cache-dir -r requirements.txt && rm requirements.txt
 # Install pytorch3d
-RUN source ${HOME}/.zshrc && FORCE_CUDA=1 python -m pip install --no-cache-dir "git+https://github.com/facebookresearch/pytorch3d.git@stable"
+ARG PYTORCH3D_VERSION="0.7.4"
+RUN source ${HOME}/.zshrc && FORCE_CUDA=1 python -m pip install --no-cache-dir "git+https://github.com/facebookresearch/pytorch3d.git@v${PYTORCH3D_VERSION}"
 # Install kaolin
-RUN source ${HOME}/.zshrc && FORCE_CUDA=1 python -m pip install --no-cache-dir "git+https://github.com/NVIDIAGameWorks/kaolin.git"
+ARG KAOLIN_VERSION="0.14.0"
+RUN source ${HOME}/.zshrc && python -m pip install --no-cache-dir kaolin==${KAOLIN_VERSION} -f https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.0.1_cu117.html
 
 # Set working directory
 ARG WORK_DIR="code"
