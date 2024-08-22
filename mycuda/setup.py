@@ -18,7 +18,8 @@ code_dir = os.path.dirname(os.path.realpath(__file__))
 nvcc_flags = [
     "-Xcompiler",
     "-O3",
-    "-std=c++14",
+    # "-std=c++14",
+    "-std=c++17",
     "-U__CUDA_NO_HALF_OPERATORS__",
     "-U__CUDA_NO_HALF_CONVERSIONS__",
     "-U__CUDA_NO_HALF2_OPERATORS__",
